@@ -1,0 +1,52 @@
+<?xml version="1.0"?>
+
+<project name="DayTrader" default="message" basedir=".">
+
+	<property name="src" value="samples/daytrader/src/java/" />
+	<property name="project.build" value="../../target/classes" />
+	<property name="extract.home" value="Daytrader3Sample/wlp/usr/servers/Daytrader3Sample/dropins/daytrader3-ee6" />
+
+	<import file="../../maven-build.xml" />
+
+	<target name="message">
+		<echo>DayTrader Mongo</echo>
+	</target>
+
+	<target name="ear" depends="jar">
+		<ear destfile="dist/daytrader3-ee6.ear" appxml="${extract.home}/META-INF/application.xml">
+			<metainf file="${extract.home}/META-INF/*" excludes="application.xml" />
+			<fileset dir="${extract.home}/" includes="*.war" />
+			<fileset dir="dist" includes="*.jar,*.war" />
+		</ear>
+	</target>
+
+	<target name="jar" depends="extract">
+		<jar destfile="dist/dt-ejb.jar">
+			<metainf file="${extract.home}/dt-ejb/META-INF/*" />
+			<fileset dir="${project.build}" includes="**/**" />
+			<fileset dir="${extract.home}/dt-ejb" includes="com/ibm/websphere/samples/daytrader/*" excludes="com/ibm/websphere/samples/daytrader/TradeAction*" />
+			<fileset dir="${extract.home}/dt-ejb" includes="com/ibm/websphere/samples/daytrader/direct/*" />
+			<fileset dir="${extract.home}/dt-ejb" includes="com/ibm/websphere/samples/daytrader/ejb3/*" />
+			<fileset dir="${extract.home}/dt-ejb" includes="com/ibm/websphere/samples/daytrader/soap/*" />
+			<fileset dir="${extract.home}/dt-ejb" includes="com/ibm/websphere/samples/daytrader/util/*" />
+		</jar>
+	</target>
+
+	<target name="init">
+		<available file="Daytrader3Sample.jar" property="Daytrader3Sample.jar.exist" />
+	</target>
+
+	<target name="extract" if="Daytrader3Sample.jar.exist" depends="init, clean-dt3">
+		<unzip src="Daytrader3Sample.jar" dest="Daytrader3Sample" />
+		<unzip src="Daytrader3Sample/wlp/usr/servers/Daytrader3Sample/dropins/daytrader3-ee6.ear" dest="${extract.home}" />
+		<unzip src="${extract.home}/dt-ejb.jar" dest="${extract.home}/dt-ejb" />
+	</target>
+
+	<target name="clean-dt3">
+		<delete dir="Daytrader3Sample/META-INF" />
+		<delete dir="Daytrader3Sample/wlp" />
+		<delete file="Daytrader3Sample/externaldependencies.xml" />
+		<delete dir="dist" />
+	</target>
+
+</project>

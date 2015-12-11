@@ -1,0 +1,6 @@
+*.class
+*.jar
+*.ear
+target/
+samples/daytrader/Daytrader3Sample
+samples/daytrader/dist
