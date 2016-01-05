@@ -28,11 +28,12 @@ import org.bson.BsonValue;
 import org.bson.Document;
 import org.bson.types.ObjectId;
 
-import com.ibm.research.mongotx.TxDatabase;
 import com.ibm.research.mongotx.Tx;
 import com.ibm.research.mongotx.TxCollection;
+import com.ibm.research.mongotx.TxDatabase;
 import com.ibm.research.mongotx.TxRollback;
 import com.ibm.research.mongotx.lrc.LRCTx.STATE;
+import com.mongodb.MongoWriteException;
 import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
@@ -313,15 +314,21 @@ public class LRCTxDBCollection implements TxCollection, Constants {
             return;
 
         String unsafeTxId = unsafe.getString(ATTR_VALUE_UNSAFE_TXID);
-        Document newSafe = new Document(unsafe);
-        clean(newSafe);
-        newSafe.append(ATTR_VALUE_TXID, unsafeTxId);
 
         Document query = new Document()//
                 .append(ATTR_ID, sd2v.get(ATTR_ID))//
                 .append(ATTR_VALUE_UNSAFE + "." + ATTR_VALUE_UNSAFE_TXID, unsafeTxId);
-        if (baseCol.replaceOne(query, newSafe).getModifiedCount() == 1L)
-            tx.putCache(this, sd2v.get(ATTR_ID), newSafe, forUpdate);
+
+        if (((Document) sd2v.get(ATTR_VALUE_UNSAFE)).containsKey(ATTR_VALUE_UNSAFE_INSERT)) {
+            if (baseCol.deleteOne(query).getDeletedCount() == 1L)
+                tx.putCache(this, sd2v.get(ATTR_ID), null, forUpdate);
+        } else {
+            Document newSafe = new Document(unsafe);
+            clean(newSafe);
+            newSafe.append(ATTR_VALUE_TXID, unsafeTxId);
+            if (baseCol.replaceOne(query, newSafe).getModifiedCount() == 1L)
+                tx.putCache(this, sd2v.get(ATTR_ID), newSafe, forUpdate);
+        }
     }
 
     private Document getSafeVersion(Document sd2v) {
@@ -344,7 +351,7 @@ public class LRCTxDBCollection implements TxCollection, Constants {
             return getUnsafeVersion(sd2v);
         } else if (hasUnsafe(sd2v)) {
             if (tx.abort(getUnsafeTxId(sd2v))) {
-                return getUnsafeVersion(sd2v);
+                return getSafeVersion(sd2v);
             } else if (forUpdate) {
                 tx.rollback();
                 throw new TxRollback("conflict. col=" + baseCol.getNamespace() + ", key=" + sd2v.get(ATTR_ID));
@@ -357,9 +364,8 @@ public class LRCTxDBCollection implements TxCollection, Constants {
     }
 
     @Override
-    public void insertOne(Tx tx_, Document value_) throws TxRollback {
+    public void insertOne(Tx tx_, Document value) throws TxRollback {
         LRCTx tx = (LRCTx) tx_;
-        Document value = (Document) value_;
         synchronized (tx) {
             Object key = value.get(ATTR_ID);
             if (key == null) {
@@ -368,8 +374,11 @@ public class LRCTxDBCollection implements TxCollection, Constants {
             }
 
             if (tx.getCache(this, key) != null) {
-                tx.rollback();
-                throw new TxRollback("insert error: already exist");
+                if (updateSD2V(tx, key, null, new Document(value), new Document(ATTR_ID, key).append(ATTR_VALUE_TXID, new Document("$exists", false))) != 1) {
+                    tx.rollback();
+                    throw new TxRollback("insert error: already exist");
+                }
+                return;
             }
 
             Document sd2v = new Document()//
@@ -386,11 +395,13 @@ public class LRCTxDBCollection implements TxCollection, Constants {
             try {
                 tx.insertTxStateIfNecessary();
                 baseCol.insertOne(sd2v);
-                tx.putDirty(this, key, sd2v);
-            } catch (Exception ex) {
-                tx.rollback();
-                throw new TxRollback("insert error: " + ex.getMessage(), ex);
+            } catch (MongoWriteException ex) {
+                if (ex.getCode() != 11000 || updateSD2V(tx, key, null, new Document(value), new Document(ATTR_ID, key)) != 1) {
+                    tx.rollback();
+                    throw new TxRollback("insert error: " + ex.getMessage(), ex);
+                }
             }
+            tx.putDirty(this, key, sd2v);
         }
     }
 
@@ -470,16 +481,38 @@ public class LRCTxDBCollection implements TxCollection, Constants {
                     cachedSd2v = null;
                     continue;
                 }
-            } else if (hasUnsafe(cachedSd2v)) {
-                String unsafeTxId = ((Document) cachedSd2v.get(ATTR_VALUE_UNSAFE)).getString(ATTR_VALUE_UNSAFE_TXID);
-                if (!tx.abort(unsafeTxId)) {
-                    tx.rollback();
-                    throw new TxRollback("conflict. col=" + baseCol.getNamespace() + ", key=" + key);
+            } else {
+                Document query;
+
+                if (hasUnsafe(cachedSd2v)) {
+                    String unsafeTxId = ((Document) cachedSd2v.get(ATTR_VALUE_UNSAFE)).getString(ATTR_VALUE_UNSAFE_TXID);
+                    if (!tx.abort(unsafeTxId)) {
+                        tx.rollback();
+                        throw new TxRollback("conflict. col=" + baseCol.getNamespace() + ", key=" + key);
+                    }
+
+                    query = new Document(userQuery)//
+                            .append(ATTR_ID, key)//
+                            .append(ATTR_VALUE_UNSAFE + "." + ATTR_VALUE_UNSAFE_TXID, unsafeTxId);
+
+                    if (pinned && pinnedSafeTxId == null)
+                        query.append(ATTR_VALUE_TXID, new Document("$exists", false));
+                } else {
+                    query = new Document(userQuery)//
+                            .append(ATTR_ID, key)//
+                            .append(ATTR_VALUE_UNSAFE + "." + ATTR_VALUE_UNSAFE_TXID, new Document("$not", new Document("$exists", true)));
+
+                    if (pinned && pinnedSafeTxId == null)
+                        query.append(ATTR_VALUE_TXID, new Document("$exists", false));
+
+                    Document prev = getSafeVersion(cachedSd2v);
+                    if (newUnsafe == null)
+                        newUnsafe = generateNewValue(tx, key, prev, updateQuery);
+
+                    if (prev == null && newUnsafe == null)
+                        return 0;
                 }
 
-                cachedSd2v = null;
-                continue;
-            } else {
                 String latestSafeTxId = cachedSd2v.getString(ATTR_VALUE_TXID);
                 if (pinnedSafeTxId != null && !pinnedSafeTxId.equals(latestSafeTxId)) {
                     tx.rollback();
@@ -492,14 +525,7 @@ public class LRCTxDBCollection implements TxCollection, Constants {
                 if (prev == null && newUnsafe == null)
                     return 0;
 
-                Document query = new Document(userQuery)//
-                        .append(ATTR_ID, key)//
-                        .append(ATTR_VALUE_UNSAFE + "." + ATTR_VALUE_UNSAFE_TXID, new Document("$not", new Document("$exists", true)));
-
-                if (pinned && pinnedSafeTxId == null)
-                    query.append(ATTR_VALUE_TXID, new Document("$exists", false));
-
-                Document newSd2v = new Document(prev)//
+                Document newSd2v = prev//
                         .append(ATTR_VALUE_UNSAFE, newUnsafe.append(ATTR_VALUE_UNSAFE_TXID, tx.txId));
 
                 tx.insertTxStateIfNecessary();

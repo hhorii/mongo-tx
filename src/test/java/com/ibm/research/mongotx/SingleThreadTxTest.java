@@ -389,6 +389,7 @@ public class SingleThreadTxTest implements Constants {
         Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
         Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
         Document v3 = new Document("f1", "v3").append("f2", "v3").append("_id", k1);
+        Document v4 = new Document("f1", "v4").append("f2", "v4").append("_id", k1);
 
         db.getCollection(col1).insertOne(v1);
 
@@ -407,6 +408,363 @@ public class SingleThreadTxTest implements Constants {
         {
             Tx tx2 = txDb.beginTransaction();
 
+            Assert.assertEquals(v3, findOne(tx2, col, k1));
+            col.replaceOne(tx2, new Document(ATTR_ID, k1), v4);
+            Assert.assertEquals(v4, findOne(tx2, col, k1));
+
+            tx2.commit();
+        }
+    }
+
+    @Test
+    public void testUpdateTimeoutedUpdatingValue() throws Exception {
+        MongoDatabase db = client.getDatabase("test");
+        db.createCollection(col1);
+
+        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+
+        TxCollection col = txDb.getCollection(col1);
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+        Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
+        Document v3 = new Document("f1", "v3").append("f2", "v3").append("_id", k1);
+
+        db.getCollection(col1).insertOne(v1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            tx1.setTimeout(10L); // set 2msec
+
+            Assert.assertEquals(v1, findOne(tx1, col, k1));
+            col.replaceOne(tx1, new Document(ATTR_ID, k1), v2);
+            Assert.assertEquals(v2, findOne(tx1, col, k1));
+            col.replaceOne(tx1, new Document(ATTR_ID, k1), v3);
+            Assert.assertEquals(v3, findOne(tx1, col, k1));
+
+            //tx1.commit();
+        }
+
+        Thread.sleep(100L);
+
+        {
+            Tx tx2 = txDb.beginTransaction();
+
+            Assert.assertEquals(v1, findOne(tx2, col, k1));
+            col.replaceOne(tx2, new Document(ATTR_ID, k1), v3);
+            Assert.assertEquals(v3, findOne(tx2, col, k1));
+
+            tx2.commit();
+        }
+    }
+
+    @Test
+    public void testInsertTimeoutedInsertingValue() throws Exception {
+        MongoDatabase db = client.getDatabase("test");
+        db.createCollection(col1);
+
+        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+
+        TxCollection col = txDb.getCollection(col1);
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+        Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            tx1.setTimeout(10L); // set 2msec
+            col.insertOne(tx1, v1);
+            //tx1.commit();
+        }
+
+        Thread.sleep(100L);
+
+        {
+            Tx tx2 = txDb.beginTransaction();
+
+            col.insertOne(tx2, v2);
+            Assert.assertEquals(v2, findOne(tx2, col, k1));
+
+            tx2.commit();
+        }
+    }
+
+    @Test
+    public void testFindTimeoutedInsertingValue() throws Exception {
+        MongoDatabase db = client.getDatabase("test");
+        db.createCollection(col1);
+
+        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+
+        TxCollection col = txDb.getCollection(col1);
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            tx1.setTimeout(10L); // set 2msec
+            col.insertOne(tx1, v1);
+            //tx1.commit();
+        }
+
+        Thread.sleep(100L);
+
+        {
+            Tx tx2 = txDb.beginTransaction();
+
+            Assert.assertNull(findOne(tx2, col, k1));
+
+            tx2.commit();
+        }
+    }
+
+    @Test
+    public void testFindForUpdateTimeoutedInsertingValue() throws Exception {
+        MongoDatabase db = client.getDatabase("test");
+        db.createCollection(col1);
+
+        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+
+        TxCollection col = txDb.getCollection(col1);
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            tx1.setTimeout(10L); // set 2msec
+            col.insertOne(tx1, v1);
+            //tx1.commit();
+        }
+
+        Thread.sleep(100L);
+
+        {
+            Tx tx2 = txDb.beginTransaction();
+
+            Assert.assertNull(findOne(tx2, col, k1, true));
+
+            col.insertOne(tx2, v1);
+
+            tx2.commit();
+        }
+
+        {
+            Tx tx3 = txDb.beginTransaction();
+
+            Assert.assertEquals(v1, findOne(tx3, col, k1, true));
+
+            tx3.commit();
+        }
+    }
+
+    @Test
+    public void testFindTimeoutedRemovingValue() throws Exception {
+        MongoDatabase db = client.getDatabase("test");
+        db.createCollection(col1);
+
+        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+
+        TxCollection col = txDb.getCollection(col1);
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+
+        db.getCollection(col1).insertOne(v1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            tx1.setTimeout(10L); // set 2msec
+            col.deleteOne(tx1, new Document("_id", k1));
+            //tx1.commit();
+        }
+
+        Thread.sleep(100L);
+
+        {
+            Tx tx2 = txDb.beginTransaction();
+
+            Assert.assertEquals(v1, findOne(tx2, col, k1));
+
+            tx2.commit();
+        }
+    }
+
+    @Test
+    public void testFindTimeoutedUpdatingValue() throws Exception {
+        MongoDatabase db = client.getDatabase("test");
+        db.createCollection(col1);
+
+        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+
+        TxCollection col = txDb.getCollection(col1);
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+        Document v2 = new Document("f2", "v1").append("f2", "v2").append("_id", k1);
+
+        db.getCollection(col1).insertOne(v1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            tx1.setTimeout(10L); // set 2msec
+            col.replaceOne(tx1, new Document("_id", k1), v2);
+            //tx1.commit();
+        }
+
+        Thread.sleep(100L);
+
+        {
+            Tx tx2 = txDb.beginTransaction();
+
+            Assert.assertEquals(v1, findOne(tx2, col, k1));
+
+            tx2.commit();
+        }
+    }
+
+    @Test
+    public void testRemoveTimeoutedInsertingValue() throws Exception {
+        MongoDatabase db = client.getDatabase("test");
+        db.createCollection(col1);
+
+        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+
+        TxCollection col = txDb.getCollection(col1);
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            tx1.setTimeout(10L); // set 2msec
+            col.insertOne(tx1, v1);
+            //tx1.commit();
+        }
+
+        Thread.sleep(100L);
+
+        {
+            Tx tx2 = txDb.beginTransaction();
+
+            col.deleteOne(tx2, new Document("_id", k1));
+            Assert.assertNull(findOne(tx2, col, k1));
+
+            tx2.commit();
+        }
+    }
+
+    @Test
+    public void testRemoveTimeoutedUpdatingValue() throws Exception {
+        MongoDatabase db = client.getDatabase("test");
+        db.createCollection(col1);
+
+        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+
+        TxCollection col = txDb.getCollection(col1);
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+        Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
+        Document v3 = new Document("f1", "v3").append("f2", "v3").append("_id", k1);
+
+        db.getCollection(col1).insertOne(v1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            tx1.setTimeout(10L); // set 2msec
+
+            Assert.assertEquals(v1, findOne(tx1, col, k1));
+            col.replaceOne(tx1, new Document(ATTR_ID, k1), v2);
+            Assert.assertEquals(v2, findOne(tx1, col, k1));
+            col.replaceOne(tx1, new Document(ATTR_ID, k1), v3);
+            Assert.assertEquals(v3, findOne(tx1, col, k1));
+
+            //tx1.commit();
+        }
+
+        Thread.sleep(100L);
+
+        {
+            Tx tx2 = txDb.beginTransaction();
+
+            Assert.assertEquals(v1, findOne(tx2, col, k1));
+            col.deleteOne(tx2, new Document(ATTR_ID, k1));
+            Assert.assertNull(findOne(tx2, col, k1));
+
+            tx2.commit();
+        }
+    }
+
+    @Test
+    public void testRemoveTimeoutedRemovingValue() throws Exception {
+        MongoDatabase db = client.getDatabase("test");
+        db.createCollection(col1);
+
+        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+
+        TxCollection col = txDb.getCollection(col1);
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+        Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
+
+        db.getCollection(col1).insertOne(v1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            tx1.setTimeout(10L); // set 2msec
+
+            Assert.assertEquals(v1, findOne(tx1, col, k1));
+            col.replaceOne(tx1, new Document(ATTR_ID, k1), v2);
+            Assert.assertEquals(v2, findOne(tx1, col, k1));
+            col.deleteOne(tx1, new Document(ATTR_ID, k1));
+            Assert.assertNull(findOne(tx1, col, k1));
+
+            //tx1.commit();
+        }
+
+        Thread.sleep(100L);
+
+        {
+            Tx tx2 = txDb.beginTransaction();
+
+            Assert.assertEquals(v1, findOne(tx2, col, k1));
+            col.deleteOne(tx2, new Document(ATTR_ID, k1));
+            Assert.assertNull(findOne(tx2, col, k1));
+
+            tx2.commit();
+        }
+    }
+
+    @Test
+    public void testUpdateTimeoutedRemovingValue() throws Exception {
+        MongoDatabase db = client.getDatabase("test");
+        db.createCollection(col1);
+
+        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+
+        TxCollection col = txDb.getCollection(col1);
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+        Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
+        Document v3 = new Document("f1", "v3").append("f2", "v3").append("_id", k1);
+
+        db.getCollection(col1).insertOne(v1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            tx1.setTimeout(10L); // set 2msec
+
+            Assert.assertEquals(v1, findOne(tx1, col, k1));
+            col.replaceOne(tx1, new Document(ATTR_ID, k1), v2);
+            Assert.assertEquals(v2, findOne(tx1, col, k1));
+            col.deleteOne(tx1, new Document(ATTR_ID, k1));
+            Assert.assertNull(findOne(tx1, col, k1));
+
+            //tx1.commit();
+        }
+
+        Thread.sleep(100L);
+
+        {
+            Tx tx2 = txDb.beginTransaction();
+
+            Assert.assertEquals(v1, findOne(tx2, col, k1));
+            col.replaceOne(tx2, new Document(ATTR_ID, k1), v3);
             Assert.assertEquals(v3, findOne(tx2, col, k1));
 
             tx2.commit();

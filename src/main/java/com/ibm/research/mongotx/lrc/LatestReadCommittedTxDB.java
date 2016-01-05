@@ -182,9 +182,11 @@ public class LatestReadCommittedTxDB implements TxDatabase, Constants {
         Document txState = itr.hasNext() ? itr.next() : null;
         if (txState == null)
             return STATE.UNKNOWN;
-        else if (txState.equals(ATTR_TX_VALUE_COMMITTED))
+
+        String txStateValue = txState.getString(ATTR_TX_STATE);
+        if (ATTR_TX_VALUE_COMMITTED.equals(txStateValue))
             return STATE.COMMITTED;
-        else if (txState.equals(ATTR_TX_VALUE_ABORTED))
+        else if (ATTR_TX_VALUE_ABORTED.equals(txStateValue))
             return STATE.ABORTED;
         else
             return STATE.WRITING;

@@ -20,6 +20,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
+import java.util.logging.Logger;
 
 import org.bson.Document;
 
@@ -27,6 +28,7 @@ import com.ibm.research.mongotx.Tx;
 import com.ibm.research.mongotx.TxRollback;
 
 class LRCTx implements Tx, Constants {
+    private static final Logger LOGGER = Logger.getLogger(LRCTx.class.getName());
 
     enum STATE {
         READING, WRITING, COMMITTED, ABORTED, UNKNOWN
@@ -39,10 +41,19 @@ class LRCTx implements Tx, Constants {
     final Map<LRCTxDBCollection, Map<Object, Document>> dirtyMaps = new HashMap<>();
     final Map<LRCTxDBCollection, Map<Object, Document>> cacheMaps = new HashMap<>();
     final Map<LRCTxDBCollection, Set<Object>> pinnedKeySets = new HashMap<>();
+    long timeout = TX_TIMEOUT;
 
     public LRCTx(LatestReadCommittedTxDB txDB, String txId) {
         this.txDB = txDB;
         this.txId = txId;
+    }
+
+    public void setTimeout(long milsec) {
+        if (state != STATE.READING) {
+            LOGGER.warning("too late to configure new timeout.");
+            return;
+        }
+        this.timeout = milsec;
     }
 
     void insertTxStateIfNecessary() throws TxRollback {
@@ -54,7 +65,7 @@ class LRCTx implements Tx, Constants {
 
         Document txState = new Document(ATTR_ID, txId)//
                 .append(ATTR_TX_STATE, ATTR_TX_VALUE_ACTIVE)//
-                .append(ATTR_TX_TIMEOUT, started + TX_TIMEOUT);
+                .append(ATTR_TX_TIMEOUT, started + timeout);
 
         txDB.sysCol.insertOne(txState);
 
@@ -87,7 +98,10 @@ class LRCTx implements Tx, Constants {
             cacheMaps.put(col, cacheMap);
         }
 
-        cacheMap.put(key, latest);
+        if (latest == null)
+            cacheMap.remove(key);
+        else
+            cacheMap.put(key, latest);
 
         if (pin) {
             Set<Object> pinnedKeySet = pinnedKeySets.get(col);

@@ -17,6 +17,8 @@ package com.ibm.research.mongotx;
 
 public interface Tx {
 
+    void setTimeout(long milsec);
+    
     void commit() throws TxRollback;
 
     void rollback();
