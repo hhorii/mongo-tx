@@ -27,11 +27,12 @@ public interface Constants {
     String ATTR_SEQ = "num";
 
     String ATTR_TX_STATE = "state";
+    String ATTR_TX_STARTTIME = "start";
     String ATTR_TX_TIMEOUT = "timeout";
 
-    String ATTR_TX_VALUE_ACTIVE = "active";
-    String ATTR_TX_VALUE_COMMITTED = "committed";
-    String ATTR_TX_VALUE_ABORTED = "aborted";
+    String STATE_ACTIVE = "active";
+    String STATE_COMMITTED = "committed";
+    String STATE_ABORTED = "aborted";
 
     String ATTR_CS_RESOLVED = "resolved";
 

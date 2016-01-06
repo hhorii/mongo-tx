@@ -17,7 +17,6 @@ package com.ibm.research.mongotx.lrc;
 
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
@@ -27,7 +26,7 @@ import org.bson.Document;
 import com.ibm.research.mongotx.Tx;
 import com.ibm.research.mongotx.TxRollback;
 
-class LRCTx implements Tx, Constants {
+public class LRCTx implements Tx, Constants {
     private static final Logger LOGGER = Logger.getLogger(LRCTx.class.getName());
 
     enum STATE {
@@ -64,7 +63,8 @@ class LRCTx implements Tx, Constants {
             return;
 
         Document txState = new Document(ATTR_ID, txId)//
-                .append(ATTR_TX_STATE, ATTR_TX_VALUE_ACTIVE)//
+                .append(ATTR_TX_STATE, STATE_ACTIVE)//
+                .append(ATTR_TX_STARTTIME, started)//
                 .append(ATTR_TX_TIMEOUT, started + timeout);
 
         txDB.sysCol.insertOne(txState);
@@ -156,24 +156,13 @@ class LRCTx implements Tx, Constants {
         return state == STATE.COMMITTED || state == STATE.ABORTED;
     }
 
-    boolean abort(String txId) {
-        Document query = new Document(ATTR_ID, txId)//
-                .append(ATTR_TX_TIMEOUT, new Document()//
-                        .append("$lt", System.currentTimeMillis()));
-        Document newTxState = new Document(ATTR_ID, txId)//
-                .append(ATTR_TX_STATE, ATTR_TX_VALUE_ABORTED);
-
-        if (txDB.sysCol.replaceOne(query, newTxState).getModifiedCount() == 1L)
-            return true;
-
-        Iterator<Document> itrLatestTxState = txDB.sysCol.find(new Document(ATTR_ID, txId)).iterator();
-        if (!itrLatestTxState.hasNext())
-            return false;
-        return ATTR_TX_VALUE_ABORTED.equals(itrLatestTxState.next().get(ATTR_TX_STATE));
-    }
-
     @Override
     public void commit() throws TxRollback {
+        commit(false);
+    }
+
+    public void commit(boolean partialForTest) throws TxRollback {
+
         if (!isActive())
             throw new IllegalStateException("state is not active");
 
@@ -188,11 +177,11 @@ class LRCTx implements Tx, Constants {
             if (!dirtyMaps.isEmpty()) {
                 Document query = new Document()//
                         .append(ATTR_ID, txId)//
-                        .append(ATTR_TX_STATE, ATTR_TX_VALUE_ACTIVE);
+                        .append(ATTR_TX_STATE, STATE_ACTIVE);
 
                 Document newTxState = new Document()//
                         .append(ATTR_ID, txId)//
-                        .append(ATTR_TX_STATE, ATTR_TX_VALUE_COMMITTED);
+                        .append(ATTR_TX_STATE, STATE_COMMITTED);
 
                 try {
                     if (txDB.sysCol.replaceOne(query, newTxState).getModifiedCount() != 1L)
@@ -211,6 +200,10 @@ class LRCTx implements Tx, Constants {
                 else
                     throw new TxRollback("commit error", ex);
             }
+            
+            //for testing
+            if (partialForTest)
+                return;
 
             committed();
 
@@ -220,7 +213,7 @@ class LRCTx implements Tx, Constants {
                 for (Map.Entry<Object, Document> dirtyEntry : dirtyMap.entrySet()) {
                     Object key = dirtyEntry.getKey();
                     Document dirty = dirtyEntry.getValue();
-                    col.commit(this, key, dirty);
+                    col.commit(txId, key, dirty);
                 }
             }
 
@@ -241,11 +234,11 @@ class LRCTx implements Tx, Constants {
             if (state == STATE.WRITING) {
                 Document query = new Document()//
                         .append(ATTR_ID, txId)//
-                        .append(ATTR_TX_STATE, ATTR_TX_VALUE_ACTIVE);
+                        .append(ATTR_TX_STATE, STATE_ACTIVE);
 
                 Document newTxState = new Document()//
                         .append(ATTR_ID, txId)//
-                        .append(ATTR_TX_STATE, ATTR_TX_VALUE_COMMITTED);
+                        .append(ATTR_TX_STATE, STATE_COMMITTED);
 
                 txDB.sysCol.replaceOne(query, newTxState);
 

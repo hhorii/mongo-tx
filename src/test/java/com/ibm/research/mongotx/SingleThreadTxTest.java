@@ -24,6 +24,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import com.ibm.research.mongotx.lrc.Constants;
+import com.ibm.research.mongotx.lrc.LRCTx;
 import com.ibm.research.mongotx.lrc.LatestReadCommittedTxDB;
 import com.mongodb.MongoClient;
 import com.mongodb.client.FindIterable;
@@ -229,6 +230,88 @@ public class SingleThreadTxTest implements Constants {
     }
 
     @Test
+    public void testGetPartialInsertedValue() throws Exception {
+        MongoDatabase db = client.getDatabase("test");
+        db.createCollection(col1);
+
+        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+
+        TxCollection col = txDb.getCollection(col1);
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            Tx tx2 = txDb.beginTransaction();
+
+            Assert.assertNull(findOne(tx1, col, k1));
+            col.insertOne(tx1, v1);
+            Assert.assertEquals(v1, findOne(tx1, col, k1));
+
+            ((LRCTx) tx1).commit(true);
+
+            Assert.assertEquals(v1, findOne(tx2, col, k1));
+
+            tx2.commit();
+        }
+    }
+
+    @Test
+    public void testDeletePartialInsertedValue() throws Exception {
+        MongoDatabase db = client.getDatabase("test");
+        db.createCollection(col1);
+
+        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+
+        TxCollection col = txDb.getCollection(col1);
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            Tx tx2 = txDb.beginTransaction();
+
+            Assert.assertNull(findOne(tx1, col, k1));
+            col.insertOne(tx1, v1);
+            Assert.assertEquals(v1, findOne(tx1, col, k1));
+
+            ((LRCTx) tx1).commit(true);
+
+            col.deleteMany(tx2, new Document("_id", k1));
+
+            tx2.commit();
+        }
+    }
+
+    @Test
+    public void testUpdatePartialInsertedValue() throws Exception {
+        MongoDatabase db = client.getDatabase("test");
+        db.createCollection(col1);
+
+        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+
+        TxCollection col = txDb.getCollection(col1);
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+        Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            Tx tx2 = txDb.beginTransaction();
+
+            Assert.assertNull(findOne(tx1, col, k1));
+            col.insertOne(tx1, v1);
+            Assert.assertEquals(v1, findOne(tx1, col, k1));
+
+            ((LRCTx) tx1).commit(true);
+
+            col.replaceOne(tx2, new Document("_id", k1), v2);
+
+            tx2.commit();
+        }
+    }
+
+    @Test
     public void testGetForUpdateValue() throws Exception {
         MongoDatabase db = client.getDatabase("test");
         db.createCollection(col1);
@@ -318,7 +401,95 @@ public class SingleThreadTxTest implements Constants {
     }
 
     @Test
-    public void testGetRemovingValue() throws Exception {
+    public void testGetPartialUpdatedValue() throws Exception {
+        MongoDatabase db = client.getDatabase("test");
+        db.createCollection(col1);
+
+        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+
+        TxCollection col = txDb.getCollection(col1);
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+        Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
+
+        db.getCollection(col1).insertOne(v1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            Tx tx2 = txDb.beginTransaction();
+
+            Assert.assertEquals(v1, findOne(tx1, col, k1));
+            col.replaceOne(tx1, new Document(ATTR_ID, k1), v2);
+            Assert.assertEquals(v2, findOne(tx1, col, k1));
+            ((LRCTx) tx1).commit(true);
+
+            Assert.assertEquals(v2, findOne(tx2, col, k1));
+
+            tx2.commit();
+        }
+    }
+
+    @Test
+    public void testUpdatePartialUpdatedValue() throws Exception {
+        MongoDatabase db = client.getDatabase("test");
+        db.createCollection(col1);
+
+        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+
+        TxCollection col = txDb.getCollection(col1);
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+        Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
+        Document v3 = new Document("f1", "v3").append("f2", "v3").append("_id", k1);
+
+        db.getCollection(col1).insertOne(v1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            Tx tx2 = txDb.beginTransaction();
+
+            Assert.assertEquals(v1, findOne(tx1, col, k1));
+            col.replaceOne(tx1, new Document(ATTR_ID, k1), v2);
+            Assert.assertEquals(v2, findOne(tx1, col, k1));
+            ((LRCTx) tx1).commit(true);
+
+            col.replaceOne(tx2, new Document(ATTR_ID, k1), v3);
+
+            tx2.commit();
+        }
+    }
+
+    @Test
+    public void testDeletePartialUpdatedValue() throws Exception {
+        MongoDatabase db = client.getDatabase("test");
+        db.createCollection(col1);
+
+        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+
+        TxCollection col = txDb.getCollection(col1);
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+        Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
+
+        db.getCollection(col1).insertOne(v1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            Tx tx2 = txDb.beginTransaction();
+
+            Assert.assertEquals(v1, findOne(tx1, col, k1));
+            col.replaceOne(tx1, new Document(ATTR_ID, k1), v2);
+            Assert.assertEquals(v2, findOne(tx1, col, k1));
+            ((LRCTx) tx1).commit(true);
+
+            col.deleteMany(tx2, new Document(ATTR_ID, k1));
+
+            tx2.commit();
+        }
+    }
+
+    @Test
+    public void testGetDeletingValue() throws Exception {
         MongoDatabase db = client.getDatabase("test");
         db.createCollection(col1);
 
@@ -340,6 +511,61 @@ public class SingleThreadTxTest implements Constants {
             Assert.assertEquals(v1, findOne(tx2, col, k1));
 
             tx1.commit();
+            tx2.commit();
+        }
+    }
+
+    @Test
+    public void testGetPartialDeletedValue() throws Exception {
+        MongoDatabase db = client.getDatabase("test");
+        db.createCollection(col1);
+
+        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+
+        TxCollection col = txDb.getCollection(col1);
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+
+        db.getCollection(col1).insertOne(v1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            Tx tx2 = txDb.beginTransaction();
+
+            Assert.assertEquals(v1, findOne(tx1, col, k1));
+            col.deleteMany(tx1, new Document(ATTR_ID, k1));
+            ((LRCTx) tx1).commit(false);
+
+            Assert.assertNull(findOne(tx2, col, k1));
+
+            tx2.commit();
+        }
+    }
+
+    @Test
+    public void testInsertPartialDeletedValue() throws Exception {
+        MongoDatabase db = client.getDatabase("test");
+        db.createCollection(col1);
+
+        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+
+        TxCollection col = txDb.getCollection(col1);
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+        Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
+
+        db.getCollection(col1).insertOne(v1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            Tx tx2 = txDb.beginTransaction();
+
+            Assert.assertEquals(v1, findOne(tx1, col, k1));
+            col.deleteMany(tx1, new Document(ATTR_ID, k1));
+            ((LRCTx) tx1).commit(false);
+
+            col.insertOne(tx2, v2);
+
             tx2.commit();
         }
     }
@@ -489,7 +715,7 @@ public class SingleThreadTxTest implements Constants {
     }
 
     @Test
-    public void testFindTimeoutedInsertingValue() throws Exception {
+    public void testGetTimeoutedInsertingValue() throws Exception {
         MongoDatabase db = client.getDatabase("test");
         db.createCollection(col1);
 
@@ -518,7 +744,7 @@ public class SingleThreadTxTest implements Constants {
     }
 
     @Test
-    public void testFindForUpdateTimeoutedInsertingValue() throws Exception {
+    public void testGetForUpdateTimeoutedInsertingValue() throws Exception {
         MongoDatabase db = client.getDatabase("test");
         db.createCollection(col1);
 
@@ -557,7 +783,7 @@ public class SingleThreadTxTest implements Constants {
     }
 
     @Test
-    public void testFindTimeoutedRemovingValue() throws Exception {
+    public void testGetTimeoutedDeletingValue() throws Exception {
         MongoDatabase db = client.getDatabase("test");
         db.createCollection(col1);
 
@@ -588,7 +814,7 @@ public class SingleThreadTxTest implements Constants {
     }
 
     @Test
-    public void testFindTimeoutedUpdatingValue() throws Exception {
+    public void testGetTimeoutedUpdatingValue() throws Exception {
         MongoDatabase db = client.getDatabase("test");
         db.createCollection(col1);
 
@@ -620,7 +846,7 @@ public class SingleThreadTxTest implements Constants {
     }
 
     @Test
-    public void testRemoveTimeoutedInsertingValue() throws Exception {
+    public void testDeleteTimeoutedInsertingValue() throws Exception {
         MongoDatabase db = client.getDatabase("test");
         db.createCollection(col1);
 
@@ -650,7 +876,7 @@ public class SingleThreadTxTest implements Constants {
     }
 
     @Test
-    public void testRemoveTimeoutedUpdatingValue() throws Exception {
+    public void testDeleteTimeoutedUpdatingValue() throws Exception {
         MongoDatabase db = client.getDatabase("test");
         db.createCollection(col1);
 
@@ -691,7 +917,7 @@ public class SingleThreadTxTest implements Constants {
     }
 
     @Test
-    public void testRemoveTimeoutedRemovingValue() throws Exception {
+    public void testDeleteTimeoutedDeletingValue() throws Exception {
         MongoDatabase db = client.getDatabase("test");
         db.createCollection(col1);
 
@@ -731,7 +957,7 @@ public class SingleThreadTxTest implements Constants {
     }
 
     @Test
-    public void testUpdateTimeoutedRemovingValue() throws Exception {
+    public void testUpdateTimeoutedDeletingValue() throws Exception {
         MongoDatabase db = client.getDatabase("test");
         db.createCollection(col1);
 
@@ -772,7 +998,7 @@ public class SingleThreadTxTest implements Constants {
     }
 
     @Test
-    public void testRemoveUpdatedValue() throws Exception {
+    public void testDeleteUpdatedValue() throws Exception {
         MongoDatabase db = client.getDatabase("test");
         db.createCollection(col1);
 
@@ -807,7 +1033,7 @@ public class SingleThreadTxTest implements Constants {
     }
 
     @Test
-    public void testRemoveInsertedValue() throws Exception {
+    public void testDeleteInsertedValue() throws Exception {
         MongoDatabase db = client.getDatabase("test");
         db.createCollection(col1);
 
@@ -839,7 +1065,7 @@ public class SingleThreadTxTest implements Constants {
     }
 
     @Test
-    public void testInsertRemovedValue() throws Exception {
+    public void testInsertDeletedValue() throws Exception {
         MongoDatabase db = client.getDatabase("test");
         db.createCollection(col1);
 
@@ -1009,6 +1235,54 @@ public class SingleThreadTxTest implements Constants {
             Assert.assertFalse(c2.hasNext());
 
             tx1.commit();
+        }
+    }
+
+    @Test
+    public void testFlush() throws Exception {
+        MongoDatabase db = client.getDatabase("test");
+        db.createCollection(col1);
+
+        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+
+        TxCollection col = txDb.getCollection(col1);
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+        String k2 = "k2";
+        Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k2);
+        String k3 = "k3";
+        Document v3 = new Document("f1", "v3").append("f2", "v3").append("_id", k3);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            col.insertOne(tx1, v1);
+
+            Tx tx2 = txDb.beginTransaction();
+            tx2.setTimeout(10);
+            col.insertOne(tx2, v2);
+
+            Tx tx3 = txDb.beginTransaction();
+            col.insertOne(tx3, v3);
+            ((LRCTx) tx3).commit(true);
+
+            Thread.sleep(100L);
+
+            col.flush(System.currentTimeMillis() - 10L);
+
+            try {
+                tx2.commit();
+                Assert.fail();
+            } catch (TxRollback ex) {
+            }
+        }
+
+        {
+            Tx tx4 = txDb.beginTransaction();
+            Assert.assertNull(findOne(tx4, col, k1));
+            Assert.assertNull(findOne(tx4, col, k2));
+            Assert.assertEquals(v3, findOne(tx4, col, k3));
+
+            tx4.commit();
         }
     }
 }

@@ -49,4 +49,6 @@ public interface TxCollection {
     //UpdateResult updateMany(Tx tx, Document filter, Document update) throws TxRollback;
 
     UpdateResult replaceOne(Tx tx, Document query, Document replacement) throws TxRollback;
+
+    void flush(long timestamp);
 }
