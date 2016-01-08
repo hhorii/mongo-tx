@@ -16,16 +16,19 @@
 package com.ibm.research.mongotx.lrc;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.bson.BsonValue;
 import org.bson.Document;
+import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
 
 import com.ibm.research.mongotx.Tx;
@@ -33,10 +36,17 @@ import com.ibm.research.mongotx.TxCollection;
 import com.ibm.research.mongotx.TxDatabase;
 import com.ibm.research.mongotx.TxRollback;
 import com.ibm.research.mongotx.lrc.LRCTx.STATE;
+import com.mongodb.Block;
+import com.mongodb.Function;
 import com.mongodb.MongoWriteException;
+import com.mongodb.ServerAddress;
+import com.mongodb.ServerCursor;
+import com.mongodb.client.AggregateIterable;
 import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.MongoIterable;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.UpdateResult;
 
@@ -228,7 +238,7 @@ public class LRCTxDBCollection implements TxCollection, Constants {
         return results;
     }
 
-    private Document clean(Document v) {
+    private static Document clean(Document v) {
         if (v == null)
             return v;
         if (v.containsKey(ATTR_VALUE_UNSAFE_REMOVE))
@@ -409,7 +419,7 @@ public class LRCTxDBCollection implements TxCollection, Constants {
         Document cachedSd2v = tx.getCache(this, key);
 
         tx.insertTxStateIfNecessary();
-        
+
         while (true) {
             String pinnedSafeTxId = null;
             boolean latestCache = false;
@@ -453,7 +463,7 @@ public class LRCTxDBCollection implements TxCollection, Constants {
                     tx.rollback();
                     throw new TxRollback("conflict. col=" + baseCol.getNamespace() + ", key=" + key);
                 }
-                
+
                 String unsafeTxId = ((Document) cachedSd2v.get(ATTR_VALUE_UNSAFE)).getString(ATTR_VALUE_UNSAFE_TXID);
 
                 Document prev = getUnsafeVersion(cachedSd2v);
@@ -790,6 +800,134 @@ public class LRCTxDBCollection implements TxCollection, Constants {
             for (Document committedSd2v : baseCol.find(query))
                 commit(committedTxId, committedSd2v.get(ATTR_ID), committedSd2v);
         }
+    }
+
+    public static class LRCTxMongoCursor implements MongoCursor<Document> {
+
+        final MongoCursor<Document> parent;
+
+        LRCTxMongoCursor(MongoCursor<Document> parent) {
+            this.parent = parent;
+        }
+
+        @Override
+        public void close() {
+            parent.close();
+        }
+
+        @Override
+        public boolean hasNext() {
+            return parent.hasNext();
+        }
+
+        @Override
+        public Document next() {
+            Document next = parent.next();
+            if (next == null)
+                return null;
+            else
+                return clean(next);
+        }
+
+        @Override
+        public Document tryNext() {
+            Document next = parent.tryNext();
+            if (next == null)
+                return null;
+            else
+                return clean(next);
+        }
+
+        @Override
+        public ServerCursor getServerCursor() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public ServerAddress getServerAddress() {
+            return parent.getServerAddress();
+        }
+
+    }
+
+    public static class LRCTxAggregateIterable implements AggregateIterable<Document> {
+
+        final AggregateIterable<Document> parent;
+
+        LRCTxAggregateIterable(AggregateIterable<Document> parent) {
+            this.parent = parent;
+        }
+
+        @Override
+        public MongoCursor<Document> iterator() {
+            MongoCursor<Document> cursor = parent.iterator();
+            return new LRCTxMongoCursor(cursor);
+        }
+
+        @Override
+        public Document first() {
+            Document first = parent.first();
+            return clean(first);
+        }
+
+        @Override
+        public <U> MongoIterable<U> map(Function<Document, U> mapper) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void forEach(final Block<? super Document> block) {
+            parent.forEach(new Block<Document>() {
+                @Override
+                public void apply(Document d) {
+                    block.apply(clean(d));
+                }
+            });
+        }
+
+        @Override
+        public <A extends Collection<? super Document>> A into(A target) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public AggregateIterable<Document> allowDiskUse(Boolean allowDiskUse) {
+            return parent.allowDiskUse(allowDiskUse);
+        }
+
+        @Override
+        public AggregateIterable<Document> batchSize(int batchSize) {
+            return parent.batchSize(batchSize);
+        }
+
+        @Override
+        public AggregateIterable<Document> maxTime(long maxTime, TimeUnit timeUnit) {
+            return parent.maxTime(maxTime, timeUnit);
+        }
+
+        @Override
+        public AggregateIterable<Document> useCursor(Boolean useCursor) {
+            return parent.useCursor(useCursor);
+        }
+
+    }
+
+    @Override
+    public AggregateIterable<Document> aggregate(List<? extends Bson> pipeline, long accepttedStalenessMs) {
+        if (accepttedStalenessMs < 0L)
+            throw new IllegalArgumentException("staleness must be positive.");
+        long flushTimestamp = System.currentTimeMillis() - accepttedStalenessMs;
+        if (flushTimestamp < 0L)
+            throw new IllegalArgumentException("staleness is too large.");
+
+        flush(flushTimestamp);
+
+        List<Bson> newPipeline = new ArrayList<>(pipeline.size() + 1);
+        newPipeline.add(new Document("$match", new Document()//  
+                .append(ATTR_VALUE_UNSAFE + "." + ATTR_VALUE_UNSAFE_INSERT, new Document("$exists", false))//
+        ));
+        newPipeline.addAll(pipeline);
+        return new LRCTxAggregateIterable(baseCol.aggregate(newPipeline));
     }
 
 }

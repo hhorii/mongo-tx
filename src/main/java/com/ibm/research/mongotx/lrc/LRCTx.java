@@ -181,7 +181,8 @@ public class LRCTx implements Tx, Constants {
 
                 Document newTxState = new Document()//
                         .append(ATTR_ID, txId)//
-                        .append(ATTR_TX_STATE, STATE_COMMITTED);
+                        .append(ATTR_TX_STATE, STATE_COMMITTED)//
+                        .append(ATTR_TX_STARTTIME, started);
 
                 try {
                     if (txDB.sysCol.replaceOne(query, newTxState).getModifiedCount() != 1L)
@@ -200,7 +201,7 @@ public class LRCTx implements Tx, Constants {
                 else
                     throw new TxRollback("commit error", ex);
             }
-            
+
             //for testing
             if (partialForTest)
                 return;

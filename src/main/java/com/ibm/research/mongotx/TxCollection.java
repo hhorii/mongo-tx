@@ -15,8 +15,12 @@
  */
 package com.ibm.research.mongotx;
 
-import org.bson.Document;
+import java.util.List;
 
+import org.bson.Document;
+import org.bson.conversions.Bson;
+
+import com.mongodb.client.AggregateIterable;
 import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.result.DeleteResult;
@@ -27,7 +31,10 @@ public interface TxCollection {
     TxDatabase getDB();
 
     MongoCollection<Document> getBaseCollection();
-
+    
+    // non-transactional
+    AggregateIterable<Document> aggregate(List<? extends Bson> pipeline, long accepttedStalenessMs);
+    
     FindIterable<Document> find(Tx tx, Document filter, boolean forUpdate) throws TxRollback;
 
     FindIterable<Document> find(Tx tx, Document filter) throws TxRollback;
@@ -50,5 +57,6 @@ public interface TxCollection {
 
     UpdateResult replaceOne(Tx tx, Document query, Document replacement) throws TxRollback;
 
+    // non-transactional
     void flush(long timestamp);
 }
