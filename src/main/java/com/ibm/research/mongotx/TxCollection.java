@@ -30,11 +30,11 @@ public interface TxCollection {
 
     TxDatabase getDB();
 
-    MongoCollection<Document> getBaseCollection();
-    
+    MongoCollection<Document> getBaseCollection(long accepptedStaleness);
+
     // non-transactional
     AggregateIterable<Document> aggregate(List<? extends Bson> pipeline, long accepttedStalenessMs);
-    
+
     FindIterable<Document> find(Tx tx, Document filter, boolean forUpdate) throws TxRollback;
 
     FindIterable<Document> find(Tx tx, Document filter) throws TxRollback;

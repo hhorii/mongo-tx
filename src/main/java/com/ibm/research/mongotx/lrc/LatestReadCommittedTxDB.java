@@ -47,6 +47,8 @@ public class LatestReadCommittedTxDB implements TxDatabase, Constants {
     final Map<String, LRCTx> activeTxs = new ConcurrentHashMap<>();
     final AtomicLong lastTxSN = new AtomicLong();
     final boolean isSharding;
+    final long timeGapMin;
+    final long timeGapMax;
 
     public LatestReadCommittedTxDB(MongoClient client, MongoDatabase db) {
         this.client = client;
@@ -56,11 +58,29 @@ public class LatestReadCommittedTxDB implements TxDatabase, Constants {
             db.createCollection(COL_SYSTEM);
             this.sysCol = db.getCollection(COL_SYSTEM);
             this.sysCol.createIndex(new Document(ATTR_TX_TIMEOUT, true));
+            this.sysCol.createIndex(new Document(ATTR_TX_STARTTIME, true));
         } else {
             this.sysCol = db.getCollection(COL_SYSTEM);
         }
-        this.clientId = incrementAndGetLong(ID_CLIENTID);
+        this.clientId = incrementAndGetLong(ID_CLIENT);
         this.isSharding = isSharding();
+
+        getCurrentTimeInServer();
+
+        long requestTs = System.currentTimeMillis();
+        long serverTs = getCurrentTimeInServer();
+        long responseTs = System.currentTimeMillis();
+
+        this.timeGapMin = requestTs - serverTs - MAX_TIMEDIFF;
+        this.timeGapMax = responseTs - serverTs + MAX_TIMEDIFF;
+    }
+
+    long getServerTimeAtMost() {
+        return System.currentTimeMillis() + timeGapMax;
+    }
+
+    long getServerTimeAtLeast() {
+        return System.currentTimeMillis() + timeGapMin;
     }
 
     @Override
@@ -183,6 +203,13 @@ public class LatestReadCommittedTxDB implements TxDatabase, Constants {
             sysCol.insertOne(new Document(ATTR_ID, key).append(ATTR_SEQ, val));
     }
 
+    long getCurrentTimeInServer() {
+        Document query = new Document(ATTR_ID, ID_TIME);
+        Document update = new Document("$currentDate", new Document(ATTR_TIME, new Document("$type", "date")));
+        Document doc = sysCol.findOneAndUpdate(query, update, new FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER).upsert(true));
+        return doc.getDate(ATTR_TIME).getTime();
+    }
+
     public STATE getTxState(String unsafeTxId) {
         Document query = new Document(ATTR_ID, unsafeTxId);
         Iterator<Document> itr = sysCol.find(query).iterator();
@@ -216,13 +243,13 @@ public class LatestReadCommittedTxDB implements TxDatabase, Constants {
         return STATE_ABORTED.equals(itrLatestTxState.next().get(ATTR_TX_STATE));
     }
 
-    List<String> flushAndGetCommittedTxIds(long timestamp) {
+    List<String> abortTimeoutTxsAndGetCommittedTxs(long timestamp) {
         long now = System.currentTimeMillis();
         if (timestamp > now)
             throw new IllegalArgumentException("timestamp must be before the current time.");
 
         List<String> txIDs = new ArrayList<>();
-        Document query = new Document(ATTR_TX_STARTTIME, new Document("$lt", timestamp));
+        Document query = new Document(ATTR_TX_STARTTIME, new Document("$lt", getServerTimeAtMost()));
 
         for (Document txState : sysCol.find(query)) {
 

@@ -28,9 +28,12 @@ import org.junit.Test;
 import com.ibm.research.mongotx.lrc.Constants;
 import com.ibm.research.mongotx.lrc.LRCTx;
 import com.ibm.research.mongotx.lrc.LatestReadCommittedTxDB;
+import com.mongodb.MongoBulkWriteException;
 import com.mongodb.MongoClient;
 import com.mongodb.client.FindIterable;
+import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.model.InsertManyOptions;
 
 public class SingleThreadTxTest implements Constants {
 
@@ -256,6 +259,8 @@ public class SingleThreadTxTest implements Constants {
 
             tx2.commit();
         }
+
+        dump(col1);
     }
 
     @Test
@@ -536,7 +541,7 @@ public class SingleThreadTxTest implements Constants {
 
             Assert.assertEquals(v1, findOne(tx1, col, k1));
             col.deleteMany(tx1, new Document(ATTR_ID, k1));
-            ((LRCTx) tx1).commit(false);
+            ((LRCTx) tx1).commit(true);
 
             Assert.assertNull(findOne(tx2, col, k1));
 
@@ -564,7 +569,7 @@ public class SingleThreadTxTest implements Constants {
 
             Assert.assertEquals(v1, findOne(tx1, col, k1));
             col.deleteMany(tx1, new Document(ATTR_ID, k1));
-            ((LRCTx) tx1).commit(false);
+            ((LRCTx) tx1).commit(true);
 
             col.insertOne(tx2, v2);
 
@@ -1323,13 +1328,13 @@ public class SingleThreadTxTest implements Constants {
             List<Document> pipelines = new ArrayList<>();
             pipelines.add(new Document("$sort", new Document("f1", -1)));
 
-            for (Document d: col.aggregate(pipelines, 10L))
+            for (Document d : col.aggregate(pipelines, 10L))
                 System.out.println(d);
-            
+
             dump(COL_SYSTEM);
-            
+
             Iterator<Document> itr = col.aggregate(pipelines, 10L).iterator();
-            
+
             Assert.assertTrue(itr.hasNext());
             Assert.assertEquals(v4, itr.next());
             Assert.assertTrue(itr.hasNext());
@@ -1343,5 +1348,111 @@ public class SingleThreadTxTest implements Constants {
             }
         }
 
+    }
+
+    @Test
+    public void testNoTxBulkInsertInOrder() throws Exception {
+        MongoDatabase db = client.getDatabase("test");
+        db.createCollection(col1);
+
+        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+
+        TxCollection col = txDb.getCollection(col1);
+        MongoCollection<Document> baseCol = col.getBaseCollection(100L);
+
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+        String k2 = "k2";
+        Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k2);
+        String k3 = "k3";
+        Document v3 = new Document("f1", "v3").append("f2", "v3").append("_id", k3);
+        String k4 = "k4";
+        Document v4 = new Document("f1", "v4").append("f2", "v4").append("_id", k4);
+        String k5 = "k5";
+        Document v5 = new Document("f1", "v5").append("f2", "v5").append("_id", k5);
+
+        List<Document> bulk = new ArrayList<>();
+        bulk.add(v1);
+        bulk.add(v2);
+        bulk.add(v3);
+        bulk.add(v4);
+        bulk.add(v5);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            tx1.setTimeout(10);
+            col.insertOne(tx1, v2); // must be rolled back
+
+            Tx tx2 = txDb.beginTransaction();
+            col.insertOne(tx2, v3); // stop here
+
+            Tx tx3 = txDb.beginTransaction();
+            col.insertOne(tx3, v4);
+            ((LRCTx) tx3).commit(true);
+        }
+
+        Thread.sleep(100L);
+
+        {
+            try {
+                baseCol.insertMany(bulk);
+                Assert.fail();
+            } catch (MongoBulkWriteException ex) {
+                Assert.assertEquals(2, ex.getWriteResult().getInsertedCount());
+            }
+        }
+    }
+
+    @Test
+    public void testNoTxBulkOutOfOrder() throws Exception {
+        MongoDatabase db = client.getDatabase("test");
+        db.createCollection(col1);
+
+        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+
+        TxCollection col = txDb.getCollection(col1);
+        MongoCollection<Document> baseCol = col.getBaseCollection(100L);
+
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+        String k2 = "k2";
+        Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k2);
+        String k3 = "k3";
+        Document v3 = new Document("f1", "v3").append("f2", "v3").append("_id", k3);
+        String k4 = "k4";
+        Document v4 = new Document("f1", "v4").append("f2", "v4").append("_id", k4);
+        String k5 = "k5";
+        Document v5 = new Document("f1", "v5").append("f2", "v5").append("_id", k5);
+
+        List<Document> bulk = new ArrayList<>();
+        bulk.add(v1);
+        bulk.add(v2);
+        bulk.add(v3);
+        bulk.add(v4);
+        bulk.add(v5);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            tx1.setTimeout(10);
+            col.insertOne(tx1, v2); // must be rolled back
+
+            Tx tx2 = txDb.beginTransaction();
+            col.insertOne(tx2, v3); // stop here
+
+            Tx tx3 = txDb.beginTransaction();
+            col.insertOne(tx3, v4);
+            ((LRCTx) tx3).commit(true);
+        }
+
+        Thread.sleep(100L);
+
+        {
+            try {
+                baseCol.insertMany(bulk, new InsertManyOptions().ordered(false));
+                Assert.fail();
+            } catch (MongoBulkWriteException ex) {
+                Assert.assertEquals(3, ex.getWriteResult().getInsertedCount());
+            }
+        }
     }
 }

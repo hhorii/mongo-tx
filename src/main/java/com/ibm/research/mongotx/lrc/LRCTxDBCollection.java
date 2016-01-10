@@ -65,8 +65,8 @@ public class LRCTxDBCollection implements TxCollection, Constants {
         initShardKeysIfNecessary();
     }
 
-    public MongoCollection<Document> getBaseCollection() {
-        return baseCol;
+    public MongoCollection<Document> getBaseCollection(long accepttedStalenessMS) {
+        return new LazyMongoCollection(this, accepttedStalenessMS);
     }
 
     private void initUnsafeIndexesIfNecesasry() {
@@ -220,7 +220,7 @@ public class LRCTxDBCollection implements TxCollection, Constants {
 
                 } else if (first && hasCommittedUnsafe(sd2v)) {
                     again = true;
-                    repair(tx, sd2v, forUpdate);
+                    concreteUnsafe(tx, sd2v, forUpdate);
                 } else {
                     tx.putCache(this, sd2v.get(ATTR_ID), sd2v, forUpdate);
                     if (!again) {
@@ -238,7 +238,7 @@ public class LRCTxDBCollection implements TxCollection, Constants {
         return results;
     }
 
-    private static Document clean(Document v) {
+    static Document clean(Document v) {
         if (v == null)
             return v;
         if (v.containsKey(ATTR_VALUE_UNSAFE_REMOVE))
@@ -318,7 +318,7 @@ public class LRCTxDBCollection implements TxCollection, Constants {
             return false;
     }
 
-    private void repair(LRCTx tx, Document sd2v, boolean forUpdate) {
+    private void concreteUnsafe(LRCTx tx, Document sd2v, boolean forUpdate) {
         Document unsafe = (Document) sd2v.get(ATTR_VALUE_UNSAFE);
         if (unsafe == null)
             return;
@@ -329,14 +329,14 @@ public class LRCTxDBCollection implements TxCollection, Constants {
                 .append(ATTR_ID, sd2v.get(ATTR_ID))//
                 .append(ATTR_VALUE_UNSAFE + "." + ATTR_VALUE_UNSAFE_TXID, unsafeTxId);
 
-        if (((Document) sd2v.get(ATTR_VALUE_UNSAFE)).containsKey(ATTR_VALUE_UNSAFE_INSERT)) {
-            if (baseCol.deleteOne(query).getDeletedCount() == 1L)
+        if (((Document) sd2v.get(ATTR_VALUE_UNSAFE)).containsKey(ATTR_VALUE_UNSAFE_REMOVE)) {
+            if (baseCol.deleteOne(query).getDeletedCount() == 1L && tx != null)
                 tx.putCache(this, sd2v.get(ATTR_ID), null, forUpdate);
         } else {
             Document newSafe = new Document(unsafe);
             clean(newSafe);
             newSafe.append(ATTR_VALUE_TXID, unsafeTxId);
-            if (baseCol.replaceOne(query, newSafe).getModifiedCount() == 1L)
+            if (baseCol.replaceOne(query, newSafe).getModifiedCount() == 1L && tx != null)
                 tx.putCache(this, sd2v.get(ATTR_ID), newSafe, forUpdate);
         }
     }
@@ -351,19 +351,20 @@ public class LRCTxDBCollection implements TxCollection, Constants {
         return ret;
     }
 
-    private Document readRepair(LRCTx tx, Document sd2v, boolean forUpdate) throws TxRollback {
+    Document readRepair(LRCTx tx, Document sd2v, boolean forUpdate) throws TxRollback {
         if (sd2v == null)
             return null;
-        if (hasLocalUnsafe(tx, sd2v)) {
+        if (tx != null && hasLocalUnsafe(tx, sd2v)) {
             return getUnsafeVersion(sd2v);
         } else if (hasCommittedUnsafe(sd2v)) {
-            repair(tx, sd2v, forUpdate);
+            concreteUnsafe(tx, sd2v, forUpdate);
             return getUnsafeVersion(sd2v);
         } else if (hasUnsafe(sd2v)) {
             if (txDB.abort(getUnsafeTxId(sd2v))) {
                 return getSafeVersion(sd2v);
             } else if (forUpdate) {
-                tx.rollback();
+                if (tx != null)
+                    tx.rollback();
                 throw new TxRollback("conflict. col=" + baseCol.getNamespace() + ", key=" + sd2v.get(ATTR_ID));
             } else {
                 return getSafeVersion(sd2v);
@@ -791,7 +792,7 @@ public class LRCTxDBCollection implements TxCollection, Constants {
 
     @Override
     public void flush(long timestamp) {
-        List<String> committedTxIds = txDB.flushAndGetCommittedTxIds(timestamp);
+        List<String> committedTxIds = txDB.abortTimeoutTxsAndGetCommittedTxs(timestamp);
 
         for (String committedTxId : committedTxIds) {
             Document query = new Document()//

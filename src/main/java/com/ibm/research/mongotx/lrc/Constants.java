@@ -20,11 +20,14 @@ import com.mongodb.BasicDBObject;
 public interface Constants {
 
     long TX_TIMEOUT = 3 * 1000L;
+    int MAX_INSERT_TRY = 10;
+    long MAX_TIMEDIFF = 10L;
 
     String COL_SYSTEM = "_SYS";
 
     String ATTR_ID = "_id";
     String ATTR_SEQ = "num";
+    String ATTR_TIME = "time";
 
     String ATTR_TX_STATE = "state";
     String ATTR_TX_STARTTIME = "start";
@@ -42,7 +45,8 @@ public interface Constants {
     String ATTR_VALUE_UNSAFE_INSERT = "_i";
     String ATTR_VALUE_UNSAFE_REMOVE = "_r";
 
-    String ID_CLIENTID = "cid";
+    String ID_CLIENT = "cid";
+    String ID_TIME = "time";
 
     BasicDBObject UPDATE_SEQ_INCREAMENT = new BasicDBObject("$inc", new BasicDBObject(ATTR_SEQ, 1L));
     BasicDBObject UPDATE_INTSEQ_INCREAMENT = new BasicDBObject("$inc", new BasicDBObject(ATTR_SEQ, 1));
