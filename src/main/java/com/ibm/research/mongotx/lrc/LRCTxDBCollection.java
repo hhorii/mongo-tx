@@ -144,12 +144,12 @@ public class LRCTxDBCollection implements TxCollection, Constants {
         }
     }
 
-    void rollback(LRCTx tx, Object key, boolean remove) {
+    void rollback(String txId, Object key, Document sd2v) {
         Document query = new Document()//
                 .append(ATTR_ID, key)//
-                .append(ATTR_VALUE_UNSAFE + "." + ATTR_VALUE_UNSAFE_TXID, tx.txId);
+                .append(ATTR_VALUE_UNSAFE + "." + ATTR_VALUE_UNSAFE_TXID, txId);
 
-        if (remove) {
+        if (((Document) sd2v.get(ATTR_VALUE_UNSAFE)).containsKey(ATTR_VALUE_UNSAFE_INSERT)) {
             baseCol.deleteOne(query);
         } else {
             Document update = new Document("$unset", new Document(ATTR_VALUE_UNSAFE + "." + ATTR_VALUE_UNSAFE_INSERT, ""));
@@ -157,7 +157,7 @@ public class LRCTxDBCollection implements TxCollection, Constants {
         }
     }
 
-    private Document addUnsafePrefix(Document query) {
+    static Document addUnsafePrefix(Document query) {
         Document ret = new Document();
         for (Map.Entry<String, Object> entry : query.entrySet()) {
             if (entry.getKey().startsWith("$"))
@@ -555,7 +555,7 @@ public class LRCTxDBCollection implements TxCollection, Constants {
         }
     }
 
-    private static class DeleteResultImpl extends DeleteResult {
+    static class DeleteResultImpl extends DeleteResult {
 
         int count;
 
@@ -597,7 +597,7 @@ public class LRCTxDBCollection implements TxCollection, Constants {
         return new DeleteResultImpl(updateSD2V(tx, key, null, newUnsafe, userQuery));
     }
 
-    public static class UpdateResultImpl extends UpdateResult {
+    static class UpdateResultImpl extends UpdateResult {
         private final long matchedCount;
         private final Long modifiedCount;
         private final BsonValue upsertedId;
@@ -792,14 +792,21 @@ public class LRCTxDBCollection implements TxCollection, Constants {
 
     @Override
     public void flush(long timestamp) {
-        List<String> committedTxIds = txDB.abortTimeoutTxsAndGetCommittedTxs(timestamp);
+        List<Document> flushingTxs = txDB.abortTimeoutTxsAndGetFinishingTxStates(timestamp);
 
-        for (String committedTxId : committedTxIds) {
+        for (Document finishingTx : flushingTxs) {
+            String txId = finishingTx.getString(ATTR_ID);
+            String state = finishingTx.getString(ATTR_TX_STATE);
             Document query = new Document()//
-                    .append(ATTR_VALUE_UNSAFE + "." + ATTR_VALUE_UNSAFE_TXID, committedTxId);
+                    .append(ATTR_VALUE_UNSAFE + "." + ATTR_VALUE_UNSAFE_TXID, txId);
 
-            for (Document committedSd2v : baseCol.find(query))
-                commit(committedTxId, committedSd2v.get(ATTR_ID), committedSd2v);
+            if (STATE_COMMITTED.equals(state)) {
+                for (Document sd2v : baseCol.find(query))
+                    commit(txId, sd2v.get(ATTR_ID), sd2v);
+            } else {
+                for (Document sd2v : baseCol.find(query))
+                    rollback(txId, sd2v.get(ATTR_ID), sd2v);
+            }
         }
     }
 

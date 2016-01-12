@@ -30,6 +30,19 @@ accounts.replaceOne(tx, new Document("_id", "B"), accountA.append("balance", acc
 tx.commit();
 ```
 
+You can use MongoCollection<Document> that provides consistent access to your MongoDB. _TxCollection.getBaseCollection(staleness)_ returns its base _MongoCollection<Document>_ that guarantees a bounded staleness, which means the _MongoCollection<Document>_ processes queries based on the latest documents at _[current time - staleness]_ or the later.
+```java
+MongoClient client; MongoDatabase db;
+
+TxDatabase txDB = new LatestReadCommittedTxDB(client, db);
+TxCollection accounts = txDB.getCollection("ACCOUNT");
+MongoCollection accountsBase = accounts.getBaseCollection(100L);
+
+accountsBase.insertOne(new Document());
+accountsBase.deleteOne(new Document());
+...
+```
+
 ###Atomicity
 Multiple manipulation of _TxCollection_ instances via the same _Tx_ instance are processed in atomic. When a transaction fails, a _TxRollback_ exception is thrown.
 

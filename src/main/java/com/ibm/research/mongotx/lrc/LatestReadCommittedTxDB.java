@@ -156,7 +156,7 @@ public class LatestReadCommittedTxDB implements TxDatabase, Constants {
         return ret;
     }
 
-    private String createNewTxId() {
+    String createNewTxId() {
         return clientId + "-" + lastTxSN.incrementAndGet();
     }
 
@@ -243,12 +243,12 @@ public class LatestReadCommittedTxDB implements TxDatabase, Constants {
         return STATE_ABORTED.equals(itrLatestTxState.next().get(ATTR_TX_STATE));
     }
 
-    List<String> abortTimeoutTxsAndGetCommittedTxs(long timestamp) {
+    List<Document> abortTimeoutTxsAndGetFinishingTxStates(long timestamp) {
         long now = System.currentTimeMillis();
         if (timestamp > now)
             throw new IllegalArgumentException("timestamp must be before the current time.");
 
-        List<String> txIDs = new ArrayList<>();
+        List<Document> finishingTxStates = new ArrayList<>();
         Document query = new Document(ATTR_TX_STARTTIME, new Document("$lt", getServerTimeAtMost()));
 
         for (Document txState : sysCol.find(query)) {
@@ -256,13 +256,17 @@ public class LatestReadCommittedTxDB implements TxDatabase, Constants {
             String txId = txState.getString(ATTR_ID);
 
             String state = txState.getString(ATTR_TX_STATE);
-            if (STATE_ABORTED.equals(state))
+            if (STATE_ABORTED.equals(state)) {
+                finishingTxStates.add(txState);
                 continue;
+            }
 
             if (STATE_ACTIVE.equals(state)) {
                 long timeout = txState.getLong(ATTR_TX_TIMEOUT);
-                if (timeout > now || abort(txId))
+                if (timeout > now || abort(txId)) {
+                    finishingTxStates.add(txState.append(ATTR_TX_STATE, STATE_ABORTED));
                     continue;
+                }
                 txState = sysCol.find(new Document(ATTR_ID, txId)).first();
                 if (txState == null)
                     continue;
@@ -270,9 +274,9 @@ public class LatestReadCommittedTxDB implements TxDatabase, Constants {
             }
 
             if (STATE_COMMITTED.equals(state))
-                txIDs.add(txId);
+                finishingTxStates.add(txState);
         }
 
-        return txIDs;
+        return finishingTxStates;
     }
 }

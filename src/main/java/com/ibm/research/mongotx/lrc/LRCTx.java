@@ -249,7 +249,7 @@ public class LRCTx implements Tx, Constants {
                     for (Map.Entry<Object, Document> dirtyEntry : dirtyMap.entrySet()) {
                         Object key = dirtyEntry.getKey();
                         Document dirty = dirtyEntry.getValue();
-                        col.rollback(this, key, ((Document) dirty.get(ATTR_VALUE_UNSAFE)).containsKey(ATTR_VALUE_UNSAFE_INSERT));
+                        col.rollback(txId, key, dirty);
                     }
                 }
                 txDB.sysCol.deleteOne(new Document(ATTR_ID, txId));

@@ -307,17 +307,77 @@ public class LazyMongoCollection implements MongoCollection<Document>, Constants
 
     @Override
     public DeleteResult deleteOne(Bson filter) {
-        throw new UnsupportedOperationException();
+        if (!(filter instanceof Document))
+            throw new UnsupportedOperationException("currently Document class is supportted for a filter.");
+
+        Document query = (Document) filter;
+
+        Document newQuery = new Document(query)//
+                .append(ATTR_VALUE_UNSAFE, new Document("$exists", false));
+
+        DeleteResult ret = baseCol.deleteOne(newQuery);
+        if (ret.getDeletedCount() == 1L)
+            return ret;
+
+        parent.flush(System.currentTimeMillis() - accepttedStalenessMS);
+
+        while (true) {
+            ret = baseCol.deleteOne(newQuery);
+            if (ret.getDeletedCount() == 1L)
+                return ret;
+
+            Document safe = baseCol.find(filter).first();
+            if (safe == null)
+                return new LRCTxDBCollection.DeleteResultImpl(0);
+            if (safe != null && safe.containsKey(ATTR_VALUE_UNSAFE))
+                throw new TxRollback("in conflict. filter=" + filter);
+        }
     }
 
     @Override
     public DeleteResult deleteMany(Bson filter) {
-        throw new UnsupportedOperationException();
+        if (!(filter instanceof Document))
+            throw new UnsupportedOperationException("currently Document class is supportted for a filter.");
+
+        parent.flush(System.currentTimeMillis() - accepttedStalenessMS);
+
+        Document query = (Document) filter;
+
+        Document newQuery = new Document(query)//
+                .append(ATTR_VALUE_UNSAFE, new Document("$exists", false));
+
+        return baseCol.deleteMany(newQuery);
     }
 
     @Override
     public UpdateResult replaceOne(Bson filter, Document replacement) {
-        throw new UnsupportedOperationException();
+        if (!(filter instanceof Document))
+            throw new UnsupportedOperationException("currently Document class is supportted for a filter.");
+
+        Document query = (Document) filter;
+
+        Document newQuery = new Document(query)//
+                .append(ATTR_VALUE_UNSAFE, new Document("$exists", false));
+
+        Document newDoc = new Document(replacement).append(ATTR_VALUE_TXID, parent.txDB.createNewTxId());
+
+        UpdateResult ret = baseCol.replaceOne(newQuery, newDoc);
+        if (ret.getModifiedCount() == 1L)
+            return ret;
+
+        parent.flush(System.currentTimeMillis() - accepttedStalenessMS);
+
+        while (true) {
+            ret = baseCol.replaceOne(newQuery, newDoc);
+            if (ret.getModifiedCount() == 1L)
+                return ret;
+
+            Document safe = baseCol.find(filter).first();
+            if (safe == null)
+                return ret;
+            if (safe != null && safe.containsKey(ATTR_VALUE_UNSAFE))
+                throw new TxRollback("in conflict. filter=" + filter);
+        }
     }
 
     @Override
