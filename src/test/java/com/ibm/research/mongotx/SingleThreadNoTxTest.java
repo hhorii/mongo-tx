@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import org.bson.BsonString;
 import org.bson.Document;
 import org.junit.After;
 import org.junit.Assert;
@@ -33,6 +34,7 @@ import com.mongodb.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.InsertManyOptions;
+import com.mongodb.client.model.UpdateOptions;
 
 public class SingleThreadNoTxTest implements Constants {
 
@@ -246,5 +248,61 @@ public class SingleThreadNoTxTest implements Constants {
         Assert.assertEquals(0L, baseCol.deleteMany(new Document("f1", "v2")).getDeletedCount());
         Assert.assertEquals(2L, baseCol.deleteMany(new Document()).getDeletedCount());
         Assert.assertEquals(0L, baseCol.deleteMany(new Document()).getDeletedCount());
+    }
+
+    @Test
+    public void testReplaceOne() throws Exception {
+        MongoDatabase db = client.getDatabase("test");
+        db.createCollection(col1);
+
+        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+
+        TxCollection col = txDb.getCollection(col1);
+        MongoCollection<Document> baseCol = col.getBaseCollection(100L);
+
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+        String k2 = "k2";
+        Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k2);
+        String k3 = "k3";
+        Document v3 = new Document("f1", "v3").append("f2", "v3").append("_id", k3);
+        String k4 = "k4";
+        Document v4 = new Document("f1", "v4").append("f2", "v4").append("_id", k4);
+        String k5 = "k5";
+        Document v5 = new Document("f1", "v5").append("f2", "v5").append("_id", k5);
+        baseCol.insertOne(v4);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            tx1.setTimeout(10);
+            col.insertOne(tx1, v1); // must be rolled back
+
+            Tx tx2 = txDb.beginTransaction();
+            col.insertOne(tx2, v2); // stop here
+
+            Tx tx3 = txDb.beginTransaction();
+            col.insertOne(tx3, v3);
+            ((LRCTx) tx3).commit(true);
+        }
+
+        Thread.sleep(100L);
+
+        dump(col1);
+
+        Assert.assertEquals(0L, baseCol.replaceOne(new Document("f1", "v1"), v1).getModifiedCount());
+        Assert.assertEquals(new BsonString(k1), baseCol.replaceOne(new Document("f1", "v1").append("_id", k1), v1, new UpdateOptions().upsert(true)).getUpsertedId());
+        Assert.assertEquals(1L, baseCol.replaceOne(new Document("f1", "v1").append("_id", k1), new Document("f1", "v11"), new UpdateOptions().upsert(true)).getModifiedCount());
+
+        Assert.assertEquals(0L, baseCol.replaceOne(new Document("f1", "v2"), v2).getModifiedCount());
+        try {
+            System.out.println(baseCol.replaceOne(new Document("_id", k2).append("f1", "v2"), v2, new UpdateOptions().upsert(true)));
+            dump(col1);
+            Assert.fail();
+        } catch (Exception ex) {
+        }
+
+        Assert.assertEquals(1L, baseCol.replaceOne(new Document("f1", "v3"), new Document("f1", "v33")).getModifiedCount());
+        Assert.assertEquals(1L, baseCol.replaceOne(new Document("f1", "v4"), new Document("f1", "v44")).getModifiedCount());
+        Assert.assertEquals(new BsonString(k5), baseCol.replaceOne(new Document("_id", k5).append("f1", "v4"), v5, new UpdateOptions().upsert(true)).getUpsertedId());
     }
 }

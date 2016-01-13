@@ -35,7 +35,7 @@ public class LRCTx implements Tx, Constants {
 
     final LatestReadCommittedTxDB txDB;
     final String txId;
-    final long started = System.currentTimeMillis();
+    final long started;
     STATE state = STATE.READING;
     final Map<LRCTxDBCollection, Map<Object, Document>> dirtyMaps = new HashMap<>();
     final Map<LRCTxDBCollection, Map<Object, Document>> cacheMaps = new HashMap<>();
@@ -45,6 +45,7 @@ public class LRCTx implements Tx, Constants {
     public LRCTx(LatestReadCommittedTxDB txDB, String txId) {
         this.txDB = txDB;
         this.txId = txId;
+        this.started = txDB.getServerTimeAtLeast();
     }
 
     public void setTimeout(long milsec) {

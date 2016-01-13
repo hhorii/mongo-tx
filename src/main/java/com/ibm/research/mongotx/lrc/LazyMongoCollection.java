@@ -1,8 +1,10 @@
 package com.ibm.research.mongotx.lrc;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import org.bson.Document;
 import org.bson.codecs.configuration.CodecRegistry;
@@ -10,10 +12,15 @@ import org.bson.conversions.Bson;
 
 import com.ibm.research.mongotx.TxRollback;
 import com.ibm.research.mongotx.lrc.LRCTxDBCollection.LRCTxAggregateIterable;
+import com.mongodb.Block;
+import com.mongodb.CursorType;
+import com.mongodb.Function;
 import com.mongodb.MongoBulkWriteException;
 import com.mongodb.MongoException;
 import com.mongodb.MongoNamespace;
 import com.mongodb.ReadPreference;
+import com.mongodb.ServerAddress;
+import com.mongodb.ServerCursor;
 import com.mongodb.WriteConcern;
 import com.mongodb.bulk.BulkWriteError;
 import com.mongodb.bulk.BulkWriteResult;
@@ -23,6 +30,8 @@ import com.mongodb.client.FindIterable;
 import com.mongodb.client.ListIndexesIterable;
 import com.mongodb.client.MapReduceIterable;
 import com.mongodb.client.MongoCollection;
+import com.mongodb.client.MongoCursor;
+import com.mongodb.client.MongoIterable;
 import com.mongodb.client.model.BulkWriteOptions;
 import com.mongodb.client.model.CountOptions;
 import com.mongodb.client.model.FindOneAndDeleteOptions;
@@ -121,9 +130,163 @@ public class LazyMongoCollection implements MongoCollection<Document>, Constants
         throw new UnsupportedOperationException();
     }
 
+    class MongoCursorImpl implements MongoCursor<Document> {
+
+        final MongoCursor<Document> parent;
+
+        MongoCursorImpl(MongoCursor<Document> parent) {
+            this.parent = parent;
+        }
+
+        @Override
+        public void close() {
+            parent.close();
+        }
+
+        @Override
+        public boolean hasNext() {
+            return parent.hasNext();
+        }
+
+        @Override
+        public Document next() {
+            return LRCTxDBCollection.clean(parent.next());
+        }
+
+        @Override
+        public Document tryNext() {
+            if (hasNext())
+                return next();
+            else
+                return null;
+        }
+
+        @Override
+        public ServerCursor getServerCursor() {
+            return parent.getServerCursor();
+        }
+
+        @Override
+        public ServerAddress getServerAddress() {
+            return parent.getServerAddress();
+        }
+
+    }
+
+    class FindIterableImpl implements FindIterable<Document> {
+
+        final FindIterable<Document> parent;
+
+        FindIterableImpl(FindIterable<Document> parent) {
+            this.parent = parent;
+        }
+
+        @Override
+        public MongoCursor<Document> iterator() {
+            return new MongoCursorImpl(parent.iterator());
+        }
+
+        @Override
+        public Document first() {
+            return LRCTxDBCollection.clean(parent.first());
+        }
+
+        @Override
+        public <U> MongoIterable<U> map(Function<Document, U> mapper) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void forEach(Block<? super Document> block) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public <A extends Collection<? super Document>> A into(A target) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public FindIterable<Document> filter(Bson filter) {
+            parent.filter(filter);
+            return this;
+        }
+
+        @Override
+        public FindIterable<Document> limit(int limit) {
+            parent.limit(limit);
+            return this;
+        }
+
+        @Override
+        public FindIterable<Document> skip(int skip) {
+            parent.skip(skip);
+            return this;
+        }
+
+        @Override
+        public FindIterable<Document> maxTime(long maxTime, TimeUnit timeUnit) {
+            parent.maxTime(maxTime, timeUnit);
+            return this;
+        }
+
+        @Override
+        public FindIterable<Document> modifiers(Bson modifiers) {
+            parent.modifiers(modifiers);
+            return this;
+        }
+
+        @Override
+        public FindIterable<Document> projection(Bson projection) {
+            parent.projection(projection);
+            return this;
+        }
+
+        @Override
+        public FindIterable<Document> sort(Bson sort) {
+            parent.sort(sort);
+            return this;
+        }
+
+        @Override
+        public FindIterable<Document> noCursorTimeout(boolean noCursorTimeout) {
+            parent.noCursorTimeout(noCursorTimeout);
+            return this;
+        }
+
+        @Override
+        public FindIterable<Document> oplogReplay(boolean oplogReplay) {
+            parent.oplogReplay(oplogReplay);
+            return this;
+        }
+
+        @Override
+        public FindIterable<Document> partial(boolean partial) {
+            parent.partial(partial);
+            return this;
+        }
+
+        @Override
+        public FindIterable<Document> cursorType(CursorType cursorType) {
+            parent.cursorType(cursorType);
+            return this;
+        }
+
+        @Override
+        public FindIterable<Document> batchSize(int batchSize) {
+            parent.batchSize(batchSize);
+            return this;
+        }
+
+    }
+
     @Override
     public FindIterable<Document> find() {
-        throw new UnsupportedOperationException();
+        flush();
+        return new FindIterableImpl(baseCol.find(//
+                new Document()//
+                        .append(ATTR_VALUE_UNSAFE + "." + ATTR_VALUE_UNSAFE_INSERT, new Document("$exists", false)))//
+        );
     }
 
     @Override
@@ -133,7 +296,13 @@ public class LazyMongoCollection implements MongoCollection<Document>, Constants
 
     @Override
     public FindIterable<Document> find(Bson filter) {
-        throw new UnsupportedOperationException();
+        if (!(filter instanceof Document))
+            throw new UnsupportedOperationException("currently Document class is supportted for a filter.");
+        flush();
+        return new FindIterableImpl(baseCol.find(//
+                new Document((Document) filter)//
+                        .append(ATTR_VALUE_UNSAFE + "." + ATTR_VALUE_UNSAFE_INSERT, new Document("$exists", false)))//
+        );
     }
 
     @Override
@@ -141,15 +310,17 @@ public class LazyMongoCollection implements MongoCollection<Document>, Constants
         throw new UnsupportedOperationException();
     }
 
-    @Override
-    public AggregateIterable<Document> aggregate(List<? extends Bson> pipeline) {
-        if (accepttedStalenessMS < 0L)
-            throw new IllegalArgumentException("staleness must be positive.");
-        long flushTimestamp = System.currentTimeMillis() - accepttedStalenessMS;
-        if (flushTimestamp < 0L)
+    private void flush() {
+        long timestamp = parent.txDB.getServerTimeAtMost() - accepttedStalenessMS;
+        if (timestamp < 0L)
             throw new IllegalArgumentException("staleness is too large.");
 
-        parent.flush(flushTimestamp);
+        parent.flush(timestamp);
+    }
+
+    @Override
+    public AggregateIterable<Document> aggregate(List<? extends Bson> pipeline) {
+        flush();
 
         List<Bson> newPipeline = new ArrayList<>(pipeline.size() + 1);
         newPipeline.add(new Document("$match", new Document()//  
@@ -319,18 +490,14 @@ public class LazyMongoCollection implements MongoCollection<Document>, Constants
         if (ret.getDeletedCount() == 1L)
             return ret;
 
-        parent.flush(System.currentTimeMillis() - accepttedStalenessMS);
+        flush();
 
         while (true) {
             ret = baseCol.deleteOne(newQuery);
             if (ret.getDeletedCount() == 1L)
                 return ret;
-
-            Document safe = baseCol.find(filter).first();
-            if (safe == null)
+            else
                 return new LRCTxDBCollection.DeleteResultImpl(0);
-            if (safe != null && safe.containsKey(ATTR_VALUE_UNSAFE))
-                throw new TxRollback("in conflict. filter=" + filter);
         }
     }
 
@@ -339,7 +506,7 @@ public class LazyMongoCollection implements MongoCollection<Document>, Constants
         if (!(filter instanceof Document))
             throw new UnsupportedOperationException("currently Document class is supportted for a filter.");
 
-        parent.flush(System.currentTimeMillis() - accepttedStalenessMS);
+        flush();
 
         Document query = (Document) filter;
 
@@ -351,6 +518,11 @@ public class LazyMongoCollection implements MongoCollection<Document>, Constants
 
     @Override
     public UpdateResult replaceOne(Bson filter, Document replacement) {
+        return replaceOne(filter, replacement, new UpdateOptions().upsert(false));
+    }
+
+    @Override
+    public UpdateResult replaceOne(Bson filter, Document replacement, UpdateOptions updateOptions) {
         if (!(filter instanceof Document))
             throw new UnsupportedOperationException("currently Document class is supportted for a filter.");
 
@@ -365,7 +537,7 @@ public class LazyMongoCollection implements MongoCollection<Document>, Constants
         if (ret.getModifiedCount() == 1L)
             return ret;
 
-        parent.flush(System.currentTimeMillis() - accepttedStalenessMS);
+        flush();
 
         while (true) {
             ret = baseCol.replaceOne(newQuery, newDoc);
@@ -373,56 +545,122 @@ public class LazyMongoCollection implements MongoCollection<Document>, Constants
                 return ret;
 
             Document safe = baseCol.find(filter).first();
-            if (safe == null)
+            if (safe == null) {
+                if (!updateOptions.isUpsert())
+                    return ret;
+                try {
+                    return baseCol.replaceOne(newQuery, newDoc, updateOptions);
+                } catch (MongoException ex) {
+                    if (ex.getCode() == 11000)
+                        throw new TxRollback("in conflict. filter=" + filter);
+                }
                 return ret;
-            if (safe != null && safe.containsKey(ATTR_VALUE_UNSAFE))
+            }
+            if (safe.containsKey(ATTR_VALUE_UNSAFE))
                 throw new TxRollback("in conflict. filter=" + filter);
         }
     }
 
     @Override
-    public UpdateResult replaceOne(Bson filter, Document replacement, UpdateOptions updateOptions) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
     public UpdateResult updateOne(Bson filter, Bson update) {
-        throw new UnsupportedOperationException();
+        return updateOne(filter, update, new UpdateOptions());
     }
 
     @Override
     public UpdateResult updateOne(Bson filter, Bson update, UpdateOptions updateOptions) {
-        throw new UnsupportedOperationException();
+        if (!(filter instanceof Document) || !(update instanceof Document))
+            throw new UnsupportedOperationException("currently Document class is supportted for a filter and an update.");
+
+        Document newQuery = new Document((Document) filter)//
+                .append(ATTR_VALUE_UNSAFE, new Document("$exists", false));
+
+        Document newUpdate = new Document((Document) update);
+        Document setOp = (Document) newUpdate.get("$set");
+        if (setOp == null)
+            setOp = new Document();
+        newUpdate.append("$set", setOp.append(ATTR_VALUE_TXID, parent.txDB.createNewTxId()));
+
+        if (!updateOptions.isUpsert()) {
+            UpdateResult ret = baseCol.updateOne(newQuery, newUpdate, updateOptions);
+            if (ret.getModifiedCount() == 1L)
+                return ret;
+            flush();
+            return baseCol.updateOne(newQuery, newUpdate, updateOptions);
+        }
+
+        flush();
+
+        return baseCol.updateOne(newQuery, newUpdate, updateOptions);
     }
 
     @Override
     public UpdateResult updateMany(Bson filter, Bson update) {
-        throw new UnsupportedOperationException();
+        return updateMany(filter, update, new UpdateOptions());
     }
 
     @Override
     public UpdateResult updateMany(Bson filter, Bson update, UpdateOptions updateOptions) {
-        throw new UnsupportedOperationException();
+        if (!(filter instanceof Document) || !(update instanceof Document))
+            throw new UnsupportedOperationException("currently Document class is supportted for a filter and an update.");
+
+        Document newQuery = new Document((Document) filter)//
+                .append(ATTR_VALUE_UNSAFE, new Document("$exists", false));
+
+        Document newUpdate = new Document((Document) update);
+        Document setOp = (Document) newUpdate.get("$set");
+        if (setOp == null)
+            setOp = new Document();
+        newUpdate.append("$set", setOp.append(ATTR_VALUE_TXID, parent.txDB.createNewTxId()));
+
+        flush();
+
+        return baseCol.updateMany(newQuery, newUpdate, updateOptions);
     }
 
     @Override
     public Document findOneAndDelete(Bson filter) {
-        throw new UnsupportedOperationException();
+        return findOneAndDelete(filter, new FindOneAndDeleteOptions());
     }
 
     @Override
     public Document findOneAndDelete(Bson filter, FindOneAndDeleteOptions options) {
-        throw new UnsupportedOperationException();
+        if (!(filter instanceof Document))
+            throw new UnsupportedOperationException("currently Document class is supportted for a filter.");
+
+        Document newQuery = new Document((Document) filter)//
+                .append(ATTR_VALUE_UNSAFE, new Document("$exists", false));
+
+        Document doc = baseCol.findOneAndDelete(newQuery, options);
+        if (doc != null)
+            return doc;
+
+        flush();
+
+        return baseCol.findOneAndDelete(newQuery, options);
     }
 
     @Override
     public Document findOneAndReplace(Bson filter, Document replacement) {
-        throw new UnsupportedOperationException();
+        return findOneAndReplace(filter, replacement, new FindOneAndReplaceOptions());
     }
 
     @Override
     public Document findOneAndReplace(Bson filter, Document replacement, FindOneAndReplaceOptions options) {
-        throw new UnsupportedOperationException();
+        if (!(filter instanceof Document))
+            throw new UnsupportedOperationException("currently Document class is supportted for a filter.");
+
+        Document newQuery = new Document((Document) filter)//
+                .append(ATTR_VALUE_UNSAFE, new Document("$exists", false));
+
+        Document newReplacement = new Document(replacement).append(ATTR_VALUE_TXID, parent.txDB.createNewTxId());
+
+        Document doc = baseCol.findOneAndReplace(newQuery, newReplacement, options);
+        if (doc != null)
+            return doc;
+
+        flush();
+
+        return baseCol.findOneAndReplace(newQuery, newReplacement, options);
     }
 
     @Override
@@ -432,7 +670,25 @@ public class LazyMongoCollection implements MongoCollection<Document>, Constants
 
     @Override
     public Document findOneAndUpdate(Bson filter, Bson update, FindOneAndUpdateOptions options) {
-        throw new UnsupportedOperationException();
+        if (!(filter instanceof Document) || !(update instanceof Document))
+            throw new UnsupportedOperationException("currently Document class is supportted for a filter and an update.");
+
+        Document newQuery = new Document((Document) filter)//
+                .append(ATTR_VALUE_UNSAFE, new Document("$exists", false));
+
+        Document newUpdate = new Document((Document) update);
+        Document setOp = (Document) newUpdate.get("$set");
+        if (setOp == null)
+            setOp = new Document();
+        newUpdate.append("$set", setOp.append(ATTR_VALUE_TXID, parent.txDB.createNewTxId()));
+
+        Document doc = baseCol.findOneAndUpdate(newQuery, newUpdate, options);
+        if (doc != null || options.isUpsert())
+            return doc;
+
+        flush();
+
+        return baseCol.findOneAndUpdate(newQuery, newUpdate, options);
     }
 
     @Override

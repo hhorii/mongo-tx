@@ -230,7 +230,7 @@ public class LatestReadCommittedTxDB implements TxDatabase, Constants {
     boolean abort(String txId) {
         Document query = new Document(ATTR_ID, txId)//
                 .append(ATTR_TX_TIMEOUT, new Document()//
-                        .append("$lt", System.currentTimeMillis()));
+                        .append("$lt", getServerTimeAtLeast()));
         Document newTxState = new Document(ATTR_ID, txId)//
                 .append(ATTR_TX_STATE, STATE_ABORTED);
 
@@ -244,7 +244,7 @@ public class LatestReadCommittedTxDB implements TxDatabase, Constants {
     }
 
     List<Document> abortTimeoutTxsAndGetFinishingTxStates(long timestamp) {
-        long now = System.currentTimeMillis();
+        long now = getServerTimeAtLeast();
         if (timestamp > now)
             throw new IllegalArgumentException("timestamp must be before the current time.");
 
@@ -263,7 +263,7 @@ public class LatestReadCommittedTxDB implements TxDatabase, Constants {
 
             if (STATE_ACTIVE.equals(state)) {
                 long timeout = txState.getLong(ATTR_TX_TIMEOUT);
-                if (timeout > now || abort(txId)) {
+                if (timeout < now && abort(txId)) {
                     finishingTxStates.add(txState.append(ATTR_TX_STATE, STATE_ABORTED));
                     continue;
                 }

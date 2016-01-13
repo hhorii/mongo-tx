@@ -381,7 +381,7 @@ public class LRCTxDBCollection implements TxCollection, Constants {
             Object key = value.get(ATTR_ID);
             if (key == null) {
                 key = new ObjectId();
-                value.append(ATTR_ID, key);
+                value = new Document(value).append(ATTR_ID, key);
             }
 
             if (tx.getCache(this, key) != null) {
