@@ -232,6 +232,7 @@ public class LRCTxDBCollection implements TxCollection, Constants {
             if (!again)
                 break;
             first = false;
+            again = false;
             results.clear();
         }
         results.addAll(localResults);

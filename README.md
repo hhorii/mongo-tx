@@ -55,7 +55,9 @@ MongoTx uses [optimistic concurrency control](https://en.wikipedia.org/wiki/Opti
 ###Durability
 Durability depends on the underlying MongoDB.
 
-[concept paper](/concept.pdf)
+How to use
+------------
+download [latest build](/latest_release/com.ibm.research.mongotx-20160303.jar) and [mongo-java-driver (3.0.4 or later)](https://docs.mongodb.org/ecosystem/drivers/java/).
 
 How to build
 ------------
