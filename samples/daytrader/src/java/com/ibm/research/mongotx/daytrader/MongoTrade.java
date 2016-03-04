@@ -27,7 +27,7 @@ import java.util.List;
 
 import org.bson.Document;
 
-import com.ibm.research.mongotx.MongoTxDatabase;
+import com.ibm.research.mongotx.TxDatabase;
 import com.ibm.research.mongotx.Tx;
 import com.ibm.research.mongotx.TxCollection;
 import com.ibm.research.mongotx.TxRollback;
@@ -53,7 +53,7 @@ public class MongoTrade implements TradeServices, DT3Schema {
     public static void init() {
     }
 
-    public final MongoTxDatabase txDB;
+    public final TxDatabase txDB;
     private static BigDecimal ZERO = new BigDecimal(0.0);
 
     public MongoTrade() {

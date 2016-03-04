@@ -24,7 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.bson.Document;
 
-import com.ibm.research.mongotx.MongoTxDatabase;
+import com.ibm.research.mongotx.TxDatabase;
 import com.ibm.research.mongotx.lrc.LatestReadCommittedTxDB;
 import com.ibm.websphere.samples.daytrader.TradeConfig;
 import com.mongodb.MongoClient;
@@ -39,7 +39,7 @@ public class Load implements DT3Schema {
         Load.out = out;
     }
 
-    public static void dropCollections(MongoTxDatabase client) throws Exception {
+    public static void dropCollections(TxDatabase client) throws Exception {
 
         MongoDatabase db = client.getDatabase();
         for (String colName : new String[] { COL_HOLDING, COL_QUOTE, COL_ACCOUNT, COL_ACCOUNTPROFILE, COL_ORDER }) {
@@ -50,7 +50,7 @@ public class Load implements DT3Schema {
         }
     }
 
-    public static void populate(MongoTxDatabase client) throws Exception {
+    public static void populate(TxDatabase client) throws Exception {
 
         client.setInt(new Document(ATTR_SEQ_KEY, COL_ACCOUNT), -1);
         client.setInt(new Document(ATTR_SEQ_KEY, COL_ORDER), -1);
@@ -88,7 +88,7 @@ public class Load implements DT3Schema {
         orderCol.createIndex(new Document(O_ACCOUNT_ACCOUNTID, true));
     }
 
-    public static Document register(MongoTxDatabase client, Map<String, Document> userId2Account, String userId, String password, String fullname, String address, String email, String creditCard, double openBalance, double balance) {
+    public static Document register(TxDatabase client, Map<String, Document> userId2Account, String userId, String password, String fullname, String address, String email, String creditCard, double openBalance, double balance) {
         MongoCollection<Document> accounts = client.getDatabase().getCollection(COL_ACCOUNT);
         MongoCollection<Document> accountProfiles = client.getDatabase().getCollection(COL_ACCOUNTPROFILE);
 
@@ -127,7 +127,7 @@ public class Load implements DT3Schema {
         return accountData;
     }
 
-    private static Document createClosedOrder(MongoTxDatabase client, Document accountData, Document quoteData, Document holdingData, String orderType, double quantity, String userId) throws Exception {
+    private static Document createClosedOrder(TxDatabase client, Document accountData, Document quoteData, Document holdingData, String orderType, double quantity, String userId) throws Exception {
         Document order = new Document();
         long currentDate = System.currentTimeMillis();
 
@@ -153,7 +153,7 @@ public class Load implements DT3Schema {
         return order;
     }
 
-    private static Document createHolding(MongoTxDatabase client, int accountId, String symbol, double quantity, double purchasePrice, String userId) throws Exception {
+    private static Document createHolding(TxDatabase client, int accountId, String symbol, double quantity, double purchasePrice, String userId) throws Exception {
 
         Document holding = new Document();
         long purchaseDate = System.currentTimeMillis();
@@ -173,7 +173,7 @@ public class Load implements DT3Schema {
         return holding;
     }
 
-    public static void populateUsers(MongoTxDatabase client, Map<String, Document> quotes) throws Exception {
+    public static void populateUsers(TxDatabase client, Map<String, Document> quotes) throws Exception {
         Map<String, Document> userId2Account = new ConcurrentHashMap<>();
         for (int i = 0; i < TradeConfig.getMAX_USERS(); i++) {
             String userId = "uid:" + i;
@@ -239,7 +239,7 @@ public class Load implements DT3Schema {
         out.println();
     }
 
-    public static Document createQuote(MongoTxDatabase client, String symbol, String companyName, double price) throws Exception {
+    public static Document createQuote(TxDatabase client, String symbol, String companyName, double price) throws Exception {
         MongoCollection<Document> quotes = client.getDatabase().getCollection(COL_QUOTE);
 
         Document quoteData = new Document();
@@ -260,7 +260,7 @@ public class Load implements DT3Schema {
         return quoteData;
     }
 
-    private static void populateQuotes(MongoTxDatabase client, Map<String, Document> quotes) throws Exception {
+    private static void populateQuotes(TxDatabase client, Map<String, Document> quotes) throws Exception {
         for (int i = 0; i < TradeConfig.getMAX_QUOTES(); i++) {
             String symbol = "s:" + i;
             String companyName = "S" + i + " Incorporated";
@@ -281,7 +281,7 @@ public class Load implements DT3Schema {
     public static void main(String[] args) throws Exception {
         //MongoClient client = new MongoClient(new MongoClientURI("mongodb://admin:admin@ds043714.mongolab.com:43714/?authSource=trade&authMechanism=SCRAM-SHA-1"));
         MongoClient client = new MongoClient("localhost");
-        MongoTxDatabase txDB = new LatestReadCommittedTxDB(client, client.getDatabase("trade"));
+        TxDatabase txDB = new LatestReadCommittedTxDB(client, client.getDatabase("trade"));
         dropCollections(txDB);
         populate(txDB);
         client.close();
