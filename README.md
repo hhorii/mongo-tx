@@ -1,6 +1,6 @@
 # mongo-transaction (MongoTx)
 
-MongoTx aims to provide transactional support for MongoDB.
+MongoTx aims to provide transactional support for MongoDB. MongoTx was introduced in MongoDB World 2016 (If you want to know more detail, please contuct horii at jp.ibm.com).
 
 MongoTx works as a client stub that uses the original MongoDB driver with documents stored by existing applications. Therefore, MongoTx doesn't need any additional server, doesn't limit storage engines of MongoDB, and doesn't require data migration of existing applications to process transactions.
 
