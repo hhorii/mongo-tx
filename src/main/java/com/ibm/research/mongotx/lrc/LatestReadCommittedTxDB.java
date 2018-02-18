@@ -75,6 +75,9 @@ public class LatestReadCommittedTxDB implements TxDatabase, Constants {
         this.timeGapMax = responseTs - serverTs + MAX_TIMEDIFF;
     }
 
+    public void close() {
+    }
+
     long getServerTimeAtMost() {
         return System.currentTimeMillis() + timeGapMax;
     }
@@ -88,7 +91,7 @@ public class LatestReadCommittedTxDB implements TxDatabase, Constants {
         return this.db;
     }
 
-    long getClientId() {
+    public long getClientId() {
         return clientId;
     }
 
@@ -127,14 +130,14 @@ public class LatestReadCommittedTxDB implements TxDatabase, Constants {
             db.createCollection(collectionName);
             baseCol = db.getCollection(collectionName);
         }
-        LRCTxDBCollection lrcCol = new LRCTxDBCollection(this, baseCol);
+        LRCTxDBCollection lrcCol = new LRCTxDBCollection(this, baseCol, collectionName);
         ret = collections.putIfAbsent(collectionName, lrcCol);
         if (ret == null)
             ret = lrcCol;
     }
 
     private TxCollection createTxCollection(String name, MongoCollection<Document> baseCol) {
-        LRCTxDBCollection lrcCol = new LRCTxDBCollection(this, baseCol);
+        LRCTxDBCollection lrcCol = new LRCTxDBCollection(this, baseCol, name);
         TxCollection ret = collections.putIfAbsent(name, lrcCol);
         if (ret == null)
             ret = lrcCol;
@@ -186,6 +189,12 @@ public class LatestReadCommittedTxDB implements TxDatabase, Constants {
     @Override
     public int incrementAndGetInt(Object key) {
         return (int) sysCol.findOneAndUpdate(new Document(ATTR_ID, key), UPDATE_INTSEQ_INCREAMENT, new FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER).upsert(true)).get(ATTR_SEQ);
+    }
+
+    @Override
+    public int incrementAndGetInt(Object key, int delta) {
+        Document increment = new Document("$inc", new Document(ATTR_SEQ, delta));
+        return (int) sysCol.findOneAndUpdate(new Document(ATTR_ID, key), increment, new FindOneAndUpdateOptions().returnDocument(ReturnDocument.AFTER).upsert(true)).get(ATTR_SEQ);
     }
 
     public int getInt(Object key) {

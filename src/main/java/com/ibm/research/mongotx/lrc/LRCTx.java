@@ -260,4 +260,10 @@ public class LRCTx implements Tx, Constants {
         }
     }
 
+    @Override
+    public void commit(int partialForTest) {
+        // TODO Auto-generated method stub
+        
+    }
+
 }

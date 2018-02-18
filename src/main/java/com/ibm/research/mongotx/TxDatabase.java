@@ -19,6 +19,8 @@ import com.mongodb.client.MongoDatabase;
 
 public interface TxDatabase {
 
+    public long getClientId();
+    
     MongoDatabase getDatabase();
 
     void createCollection(String collectionName);
@@ -30,4 +32,8 @@ public interface TxDatabase {
     public void setInt(Object key, int val);
 
     public int incrementAndGetInt(Object key);
+    
+    public int incrementAndGetInt(Object key, int delta);
+    
+    public void close();
 }

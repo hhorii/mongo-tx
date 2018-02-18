@@ -28,7 +28,11 @@ import com.mongodb.client.result.UpdateResult;
 
 public interface TxCollection {
 
+    String getName();
+
     TxDatabase getDB();
+
+    MongoCollection<Document> getBaseCollection();
 
     MongoCollection<Document> getBaseCollection(long accepptedStaleness);
 
@@ -59,4 +63,6 @@ public interface TxCollection {
 
     // non-transactional
     void flush(long timestamp);
+
+    void createIndex(Document index);
 }

@@ -24,8 +24,8 @@ import org.junit.Before;
 import org.junit.Test;
 
 import com.ibm.research.mongotx.lrc.Constants;
-import com.ibm.research.mongotx.lrc.LRCTx;
 import com.ibm.research.mongotx.lrc.LatestReadCommittedTxDB;
+import com.ibm.research.mongotx.util.CustomShardMongoDatabase;
 import com.mongodb.MongoClient;
 import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoDatabase;
@@ -39,9 +39,9 @@ public class SingleThreadTxTest implements Constants {
     @Before
     public void init() throws Exception {
         client = new MongoClient("localhost");
-        MongoDatabase db = client.getDatabase("test");
+        MongoDatabase db = createDB();
         db.drop();
-        db = client.getDatabase("test");
+        db = createDB();
     }
 
     @After
@@ -49,26 +49,43 @@ public class SingleThreadTxTest implements Constants {
         client.close();
     }
 
-    void dump(String col) throws Exception {
-        Iterator<Document> cursor = client.getDatabase("test").getCollection(col).find().iterator();
+    public void dump(String col) throws Exception {
+        Iterator<Document> cursor = createDB().getCollection(col).find().iterator();
         while (cursor.hasNext())
             System.out.println(cursor.next());
     }
 
-    @Test
-    public void testSimplePut() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
+    public MongoDatabase createDB() {
+        return client.getDatabase("test");
+    }
 
+    public TxDatabase createTxDB(MongoDatabase db) {
         LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        return txDb;
+    }
 
-        Tx tx = txDb.beginTransaction();
-        txDb.getCollection(col1).insertOne(tx, new Document().append(ATTR_ID, "k1").append("f1", "v1"));
-        txDb.getCollection(col1).insertOne(tx, new Document().append(ATTR_ID, "k2").append("f2", "v2"));
+    public void insertOne(MongoDatabase db, String col, Document doc) {
+        db.getCollection(col).insertOne(doc);
+    }
+
+    public void insertOne(TxDatabase db, String col, Document doc) {
+        Tx tx = db.beginTransaction();
+        db.getCollection(col).insertOne(tx, doc);
         tx.commit();
     }
 
-    private Document findOne(Tx tx, TxCollection col, Object key) throws TxRollback {
+    @Test
+    public void testSimplePut() throws Exception {
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
+
+        Tx tx = txDb.beginTransaction();
+        txDb.getCollection(col1).insertOne(tx, new Document().append(ATTR_ID, "k1").append("f1", "v1"));
+        txDb.getCollection(col1).insertOne(tx, new Document().append(ATTR_ID, "k2").append("f1", "v2"));
+        tx.commit();
+    }
+
+    public Document findOne(Tx tx, TxCollection col, Object key) throws TxRollback {
         return findOne(tx, col, key, false);
     }
 
@@ -83,10 +100,8 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testBeginCommit() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         Tx tx = txDb.beginTransaction();
         tx.commit();
@@ -94,10 +109,8 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testCommit() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
@@ -141,10 +154,8 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testRollback() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
@@ -206,10 +217,8 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testGetInsertingValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
@@ -231,10 +240,8 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testGetPartialInsertedValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
@@ -248,7 +255,7 @@ public class SingleThreadTxTest implements Constants {
             col.insertOne(tx1, v1);
             Assert.assertEquals(v1, findOne(tx1, col, k1));
 
-            ((LRCTx) tx1).commit(true);
+            tx1.commit(1);
 
             Assert.assertEquals(v1, findOne(tx2, col, k1));
 
@@ -260,10 +267,8 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testDeletePartialInsertedValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
@@ -277,7 +282,7 @@ public class SingleThreadTxTest implements Constants {
             col.insertOne(tx1, v1);
             Assert.assertEquals(v1, findOne(tx1, col, k1));
 
-            ((LRCTx) tx1).commit(true);
+            tx1.commit(1);
 
             col.deleteMany(tx2, new Document("_id", k1));
 
@@ -287,10 +292,8 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testUpdatePartialInsertedValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
@@ -305,7 +308,7 @@ public class SingleThreadTxTest implements Constants {
             col.insertOne(tx1, v1);
             Assert.assertEquals(v1, findOne(tx1, col, k1));
 
-            ((LRCTx) tx1).commit(true);
+            tx1.commit(1);
 
             col.replaceOne(tx2, new Document("_id", k1), v2);
 
@@ -315,18 +318,15 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testGetForUpdateValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
         Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
         Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
 
-        db.getCollection(col1).insertOne(v1);
-
+        insertOne(db, col1, v1);
         {
             Tx tx1 = txDb.beginTransaction();
             Tx tx2 = txDb.beginTransaction();
@@ -345,17 +345,15 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testGetForUpdateValueAndFail() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
         Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
         Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
 
-        db.getCollection(col1).insertOne(v1);
+        insertOne(db, col1, v1);
 
         {
             Tx tx1 = txDb.beginTransaction();
@@ -376,17 +374,15 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testGetUpdatingValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
         Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
-        Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
+        Document v2 = new Document("f1", "v1").append("f2", "v2").append("_id", k1);
 
-        db.getCollection(col1).insertOne(v1);
+        insertOne(db, col1, v1);
 
         {
             Tx tx1 = txDb.beginTransaction();
@@ -404,17 +400,15 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testGetPartialUpdatedValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
         Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
         Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
 
-        db.getCollection(col1).insertOne(v1);
+        insertOne(db, col1, v1);
 
         {
             Tx tx1 = txDb.beginTransaction();
@@ -423,7 +417,7 @@ public class SingleThreadTxTest implements Constants {
             Assert.assertEquals(v1, findOne(tx1, col, k1));
             col.replaceOne(tx1, new Document(ATTR_ID, k1), v2);
             Assert.assertEquals(v2, findOne(tx1, col, k1));
-            ((LRCTx) tx1).commit(true);
+            tx1.commit(1);
 
             Assert.assertEquals(v2, findOne(tx2, col, k1));
 
@@ -433,10 +427,8 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testUpdatePartialUpdatedValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
@@ -444,7 +436,7 @@ public class SingleThreadTxTest implements Constants {
         Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
         Document v3 = new Document("f1", "v3").append("f2", "v3").append("_id", k1);
 
-        db.getCollection(col1).insertOne(v1);
+        insertOne(db, col1, v1);
 
         {
             Tx tx1 = txDb.beginTransaction();
@@ -453,7 +445,7 @@ public class SingleThreadTxTest implements Constants {
             Assert.assertEquals(v1, findOne(tx1, col, k1));
             col.replaceOne(tx1, new Document(ATTR_ID, k1), v2);
             Assert.assertEquals(v2, findOne(tx1, col, k1));
-            ((LRCTx) tx1).commit(true);
+            tx1.commit(1);
 
             col.replaceOne(tx2, new Document(ATTR_ID, k1), v3);
 
@@ -463,17 +455,15 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testDeletePartialUpdatedValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
         Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
         Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
 
-        db.getCollection(col1).insertOne(v1);
+        insertOne(db, col1, v1);
 
         {
             Tx tx1 = txDb.beginTransaction();
@@ -482,7 +472,7 @@ public class SingleThreadTxTest implements Constants {
             Assert.assertEquals(v1, findOne(tx1, col, k1));
             col.replaceOne(tx1, new Document(ATTR_ID, k1), v2);
             Assert.assertEquals(v2, findOne(tx1, col, k1));
-            ((LRCTx) tx1).commit(true);
+            tx1.commit(1);
 
             col.deleteMany(tx2, new Document(ATTR_ID, k1));
 
@@ -492,16 +482,14 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testGetDeletingValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
         Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
 
-        db.getCollection(col1).insertOne(v1);
+        insertOne(db, col1, v1);
 
         {
             Tx tx1 = txDb.beginTransaction();
@@ -519,16 +507,14 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testGetPartialDeletedValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
         Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
 
-        db.getCollection(col1).insertOne(v1);
+        insertOne(db, col1, v1);
 
         {
             Tx tx1 = txDb.beginTransaction();
@@ -536,7 +522,7 @@ public class SingleThreadTxTest implements Constants {
 
             Assert.assertEquals(v1, findOne(tx1, col, k1));
             col.deleteMany(tx1, new Document(ATTR_ID, k1));
-            ((LRCTx) tx1).commit(true);
+            tx1.commit(1);
 
             Assert.assertNull(findOne(tx2, col, k1));
 
@@ -546,17 +532,15 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testInsertPartialDeletedValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
         Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
         Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
 
-        db.getCollection(col1).insertOne(v1);
+        insertOne(db, col1, v1);
 
         {
             Tx tx1 = txDb.beginTransaction();
@@ -564,7 +548,7 @@ public class SingleThreadTxTest implements Constants {
 
             Assert.assertEquals(v1, findOne(tx1, col, k1));
             col.deleteMany(tx1, new Document(ATTR_ID, k1));
-            ((LRCTx) tx1).commit(true);
+            tx1.commit(1);
 
             col.insertOne(tx2, v2);
 
@@ -574,17 +558,15 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testUpdateValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
         Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
         Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
 
-        db.getCollection(col1).insertOne(v1);
+        insertOne(db, col1, v1);
 
         {
             Tx tx1 = txDb.beginTransaction();
@@ -607,10 +589,8 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testUpdateUpdatedValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
@@ -619,7 +599,7 @@ public class SingleThreadTxTest implements Constants {
         Document v3 = new Document("f1", "v3").append("f2", "v3").append("_id", k1);
         Document v4 = new Document("f1", "v4").append("f2", "v4").append("_id", k1);
 
-        db.getCollection(col1).insertOne(v1);
+        insertOne(db, col1, v1);
 
         {
             Tx tx1 = txDb.beginTransaction();
@@ -646,10 +626,8 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testUpdateTimeoutedUpdatingValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
@@ -657,7 +635,7 @@ public class SingleThreadTxTest implements Constants {
         Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
         Document v3 = new Document("f1", "v3").append("f2", "v3").append("_id", k1);
 
-        db.getCollection(col1).insertOne(v1);
+        insertOne(db, col1, v1);
 
         {
             Tx tx1 = txDb.beginTransaction();
@@ -687,15 +665,13 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testInsertTimeoutedInsertingValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
         Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
-        Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
+        Document v2 = new Document("f1", "v1").append("f2", "v2").append("_id", k1);
 
         {
             Tx tx1 = txDb.beginTransaction();
@@ -718,10 +694,8 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testGetTimeoutedInsertingValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
@@ -747,10 +721,8 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testGetForUpdateTimeoutedInsertingValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
@@ -786,16 +758,14 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testGetTimeoutedDeletingValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
         Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
 
-        db.getCollection(col1).insertOne(v1);
+        insertOne(db, col1, v1);
 
         {
             Tx tx1 = txDb.beginTransaction();
@@ -817,17 +787,15 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testGetTimeoutedUpdatingValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
         Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
         Document v2 = new Document("f2", "v1").append("f2", "v2").append("_id", k1);
 
-        db.getCollection(col1).insertOne(v1);
+        insertOne(db, col1, v1);
 
         {
             Tx tx1 = txDb.beginTransaction();
@@ -849,10 +817,8 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testDeleteTimeoutedInsertingValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
@@ -879,10 +845,8 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testDeleteTimeoutedUpdatingValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
@@ -890,7 +854,7 @@ public class SingleThreadTxTest implements Constants {
         Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
         Document v3 = new Document("f1", "v3").append("f2", "v3").append("_id", k1);
 
-        db.getCollection(col1).insertOne(v1);
+        insertOne(db, col1, v1);
 
         {
             Tx tx1 = txDb.beginTransaction();
@@ -920,17 +884,15 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testDeleteTimeoutedDeletingValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
         Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
         Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
 
-        db.getCollection(col1).insertOne(v1);
+        insertOne(db, col1, v1);
 
         {
             Tx tx1 = txDb.beginTransaction();
@@ -960,10 +922,8 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testUpdateTimeoutedDeletingValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
@@ -971,7 +931,7 @@ public class SingleThreadTxTest implements Constants {
         Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
         Document v3 = new Document("f1", "v3").append("f2", "v3").append("_id", k1);
 
-        db.getCollection(col1).insertOne(v1);
+        insertOne(db, col1, v1);
 
         {
             Tx tx1 = txDb.beginTransaction();
@@ -1001,17 +961,15 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testDeleteUpdatedValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
         Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
         Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
 
-        db.getCollection(col1).insertOne(v1);
+        insertOne(db, col1, v1);
 
         {
             Tx tx1 = txDb.beginTransaction();
@@ -1036,10 +994,8 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testDeleteInsertedValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
@@ -1068,17 +1024,15 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testInsertDeletedValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
         Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
         Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
 
-        db.getCollection(col1).insertOne(v1);
+        insertOne(db, col1, v1);
 
         {
             Tx tx1 = txDb.beginTransaction();
@@ -1103,16 +1057,14 @@ public class SingleThreadTxTest implements Constants {
 
     @Test
     public void testSimpleQuery() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
-
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
         Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
 
-        db.getCollection(col1).insertOne(v1);
+        insertOne(db, col1, v1);
 
         {
             Tx tx1 = txDb.beginTransaction();
@@ -1127,17 +1079,65 @@ public class SingleThreadTxTest implements Constants {
     }
 
     @Test
-    public void testNoHitQuery() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
+    public void testSimpleQueryWithIndex() throws Exception {
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        TxCollection col = txDb.getCollection(col1);
+        col.createIndex(new Document("f2", 1));
+
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+
+        insertOne(txDb, col1, v1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+
+            Iterator<Document> c1 = col.find(tx1, new Document("f2", "v1")).iterator();
+            Assert.assertTrue(c1.hasNext());
+            Assert.assertEquals(v1, c1.next());
+            Assert.assertFalse(c1.hasNext());
+
+            tx1.commit();
+        }
+    }
+
+    @Test
+    public void testSimpleQueryWithIndexMiss() throws Exception {
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
+
+        TxCollection col = txDb.getCollection(col1);
+        col.createIndex(new Document("f1", 1));
+
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+
+        insertOne(txDb, col1, v1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+
+            Iterator<Document> c1 = col.find(tx1, new Document("f2", "v1")).iterator();
+            Assert.assertTrue(c1.hasNext());
+            Assert.assertEquals(v1, c1.next());
+            Assert.assertFalse(c1.hasNext());
+
+            tx1.commit();
+        }
+    }
+    
+    @Test
+    public void testNoHitQuery() throws Exception {
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
         Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
 
-        db.getCollection(col1).insertOne(v1);
+        insertOne(db, col1, v1);
 
         {
             Tx tx1 = txDb.beginTransaction();
@@ -1150,11 +1150,55 @@ public class SingleThreadTxTest implements Constants {
     }
 
     @Test
-    public void testQueryInsertingValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
+    public void testNoHitQueryWithIndex() throws Exception {
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        TxCollection col = txDb.getCollection(col1);
+        col.createIndex(new Document("f2", 1));
+        
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+
+        insertOne(txDb, col1, v1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+
+            Iterator<Document> c1 = col.find(tx1, new Document("f2", "v2")).iterator();
+            Assert.assertFalse(c1.hasNext());
+
+            tx1.commit();
+        }
+    }
+
+    @Test
+    public void testNoHitQueryWithIndexMiss() throws Exception {
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
+
+        TxCollection col = txDb.getCollection(col1);
+        col.createIndex(new Document("f1", 1));
+        
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+
+        insertOne(txDb, col1, v1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+
+            Iterator<Document> c1 = col.find(tx1, new Document("f2", "v2")).iterator();
+            Assert.assertFalse(c1.hasNext());
+
+            tx1.commit();
+        }
+    }
+    
+    @Test
+    public void testQueryInsertingValue() throws Exception {
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
@@ -1177,20 +1221,107 @@ public class SingleThreadTxTest implements Constants {
             tx2.commit();
         }
     }
+    
+    @Test
+    public void testQueryInsertingValueWithIndex() throws Exception {
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
+
+        TxCollection col = txDb.getCollection(col1);
+        col.createIndex(new Document("f2", 1));
+        
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            Tx tx2 = txDb.beginTransaction();
+
+            col.insertOne(tx1, v1);
+            Iterator<Document> c1 = col.find(tx1, new Document("f1", "v1")).iterator();
+            Assert.assertTrue(c1.hasNext());
+            Assert.assertEquals(v1, c1.next());
+            Assert.assertFalse(c1.hasNext());
+
+            Iterator<Document> c2 = col.find(tx2, new Document("f1", "v1")).iterator();
+            Assert.assertFalse(c2.hasNext());
+
+            tx1.commit();
+            tx2.commit();
+        }
+    }
 
     @Test
-    public void testNoHitQueryUpdatingValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
+    public void testQueryInsertingValueWithIndexMiss() throws Exception {
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        TxCollection col = txDb.getCollection(col1);
+        col.createIndex(new Document("f1", 1));
+        
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            Tx tx2 = txDb.beginTransaction();
+
+            col.insertOne(tx1, v1);
+            Iterator<Document> c1 = col.find(tx1, new Document("f2", "v1")).iterator();
+            Assert.assertTrue(c1.hasNext());
+            Assert.assertEquals(v1, c1.next());
+            Assert.assertFalse(c1.hasNext());
+
+            Iterator<Document> c2 = col.find(tx2, new Document("f2", "v1")).iterator();
+            Assert.assertFalse(c2.hasNext());
+
+            tx1.commit();
+            tx2.commit();
+        }
+    }
+    
+    @Test
+    public void testNoHitQueryUpdatingValue() throws Exception {
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
         Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
         Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
 
-        db.getCollection(col1).insertOne(v1);
+        insertOne(db, col1, v1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            Tx tx2 = txDb.beginTransaction();
+
+            col.replaceOne(tx1, v1, v2);
+            Iterator<Document> c1 = col.find(tx1, new Document("f2", "v1")).iterator();
+            Assert.assertFalse(c1.hasNext());
+
+            Iterator<Document> c2 = col.find(tx2, new Document("f2", "v1")).iterator();
+            Assert.assertTrue(c2.hasNext());
+            Assert.assertEquals(v1, c2.next());
+            Assert.assertFalse(c2.hasNext());
+
+            tx1.commit();
+        }
+    }
+    
+    @Test
+    public void testNoHitQueryUpdatingValueWithIndex() throws Exception {
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
+
+        TxCollection col = txDb.getCollection(col1);
+        col.createIndex(new Document("f2", 1));
+        
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+        Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
+
+        insertOne(txDb, col1, v1);
 
         {
             Tx tx1 = txDb.beginTransaction();
@@ -1210,18 +1341,47 @@ public class SingleThreadTxTest implements Constants {
     }
 
     @Test
-    public void testQueryUpdatingValue() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
+    public void testNoHitQueryUpdatingValueWithIndexMiss() throws Exception {
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        TxCollection col = txDb.getCollection(col1);
+        col.createIndex(new Document("f1", 1));
+        
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+        Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
+
+        insertOne(txDb, col1, v1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            Tx tx2 = txDb.beginTransaction();
+
+            col.replaceOne(tx1, v1, v2);
+            Iterator<Document> c1 = col.find(tx1, new Document("f2", "v1")).iterator();
+            Assert.assertFalse(c1.hasNext());
+
+            Iterator<Document> c2 = col.find(tx2, new Document("f2", "v1")).iterator();
+            Assert.assertTrue(c2.hasNext());
+            Assert.assertEquals(v1, c2.next());
+            Assert.assertFalse(c2.hasNext());
+
+            tx1.commit();
+        }
+    }
+    
+    @Test
+    public void testQueryUpdatingValue() throws Exception {
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
         Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
         Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
 
-        db.getCollection(col1).insertOne(v1);
+        insertOne(db, col1, v1);
 
         {
             Tx tx1 = txDb.beginTransaction();
@@ -1241,11 +1401,70 @@ public class SingleThreadTxTest implements Constants {
     }
 
     @Test
-    public void testFlush() throws Exception {
-        MongoDatabase db = client.getDatabase("test");
-        db.createCollection(col1);
+    public void testQueryUpdatingValueWithIndex() throws Exception {
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
-        LatestReadCommittedTxDB txDb = new LatestReadCommittedTxDB(client, db);
+        TxCollection col = txDb.getCollection(col1);
+        col.createIndex(new Document("f2", 1));
+        
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+        Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
+
+        insertOne(txDb, col1, v1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            Tx tx2 = txDb.beginTransaction();
+
+            col.replaceOne(tx1, v1, v2);
+            Iterator<Document> c1 = col.find(tx1, new Document("f2", "v2")).iterator();
+            Assert.assertTrue(c1.hasNext());
+            Assert.assertEquals(v2, c1.next());
+            Assert.assertFalse(c1.hasNext());
+
+            Iterator<Document> c2 = col.find(tx2, new Document("f2", "v2")).iterator();
+            Assert.assertFalse(c2.hasNext());
+
+            tx1.commit();
+        }
+    }
+    
+    @Test
+    public void testQueryUpdatingValueWithIndexMiss() throws Exception {
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
+
+        TxCollection col = txDb.getCollection(col1);
+        col.createIndex(new Document("f1", 1));
+        
+        String k1 = "k1";
+        Document v1 = new Document("f1", "v1").append("f2", "v1").append("_id", k1);
+        Document v2 = new Document("f1", "v2").append("f2", "v2").append("_id", k1);
+
+        insertOne(txDb, col1, v1);
+
+        {
+            Tx tx1 = txDb.beginTransaction();
+            Tx tx2 = txDb.beginTransaction();
+
+            col.replaceOne(tx1, v1, v2);
+            Iterator<Document> c1 = col.find(tx1, new Document("f2", "v2")).iterator();
+            Assert.assertTrue(c1.hasNext());
+            Assert.assertEquals(v2, c1.next());
+            Assert.assertFalse(c1.hasNext());
+
+            Iterator<Document> c2 = col.find(tx2, new Document("f2", "v2")).iterator();
+            Assert.assertFalse(c2.hasNext());
+
+            tx1.commit();
+        }
+    }    
+    @Test
+    public void testFlush() throws Exception {
+        MongoDatabase db = createDB();
+        TxDatabase txDb = createTxDB(db);
 
         TxCollection col = txDb.getCollection(col1);
         String k1 = "k1";
@@ -1265,7 +1484,7 @@ public class SingleThreadTxTest implements Constants {
 
             Tx tx3 = txDb.beginTransaction();
             col.insertOne(tx3, v3);
-            ((LRCTx) tx3).commit(true);
+            tx3.commit(1);
 
             Thread.sleep(100L);
 

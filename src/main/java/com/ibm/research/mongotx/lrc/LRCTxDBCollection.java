@@ -53,16 +53,26 @@ import com.mongodb.client.result.UpdateResult;
 public class LRCTxDBCollection implements TxCollection, Constants {
     private static final Logger LOGGER = Logger.getLogger(LRCTxDBCollection.class.getName());
 
+    final String name;
     final LatestReadCommittedTxDB txDB;
     final MongoCollection<Document> baseCol;
     final Set<String> shardKeys = new HashSet<>();
 
-    LRCTxDBCollection(LatestReadCommittedTxDB txDB, MongoCollection<Document> baseCol) {
+    LRCTxDBCollection(LatestReadCommittedTxDB txDB, MongoCollection<Document> baseCol, String name) {
         this.txDB = txDB;
         this.baseCol = baseCol;
+        this.name = name;
 
         initUnsafeIndexesIfNecesasry();
         initShardKeysIfNecessary();
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public MongoCollection<Document> getBaseCollection() {
+        return baseCol;
     }
 
     public MongoCollection<Document> getBaseCollection(long accepttedStalenessMS) {
@@ -72,7 +82,7 @@ public class LRCTxDBCollection implements TxCollection, Constants {
     private void initUnsafeIndexesIfNecesasry() {
         for (Document indexInfo : baseCol.listIndexes()) {
             Document key = (Document) indexInfo.get("key");
-            assert(key != null);
+            assert (key != null);
             if (key.containsKey("_id") && key.size() == 1)
                 continue;
 
@@ -937,6 +947,16 @@ public class LRCTxDBCollection implements TxCollection, Constants {
         ));
         newPipeline.addAll(pipeline);
         return new LRCTxAggregateIterable(baseCol.aggregate(newPipeline));
+    }
+
+    public void createIndex(Document keys) {
+        baseCol.createIndex(keys);
+
+        Document unsafeKeys = new Document();
+        for (Map.Entry<String, Object> entry : keys.entrySet())
+            unsafeKeys.append(ATTR_VALUE_UNSAFE + "." + entry.getKey(), entry.getValue());
+
+        baseCol.createIndex(unsafeKeys);
     }
 
 }
