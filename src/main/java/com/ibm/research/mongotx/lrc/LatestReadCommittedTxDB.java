@@ -56,11 +56,11 @@ public class LatestReadCommittedTxDB implements TxDatabase, Constants {
         this.db.withWriteConcern(WriteConcern.SAFE);
         if (db.getCollection(COL_SYSTEM) == null) {
             db.createCollection(COL_SYSTEM);
-            this.sysCol = db.getCollection(COL_SYSTEM);
+            this.sysCol = new MongoProfilingCollection(db.getCollection(COL_SYSTEM));
             this.sysCol.createIndex(new Document(ATTR_TX_TIMEOUT, true));
             this.sysCol.createIndex(new Document(ATTR_TX_STARTTIME, true));
         } else {
-            this.sysCol = db.getCollection(COL_SYSTEM);
+            this.sysCol = new MongoProfilingCollection(db.getCollection(COL_SYSTEM));
         }
         this.clientId = incrementAndGetLong(ID_CLIENT);
         this.isSharding = isSharding();
@@ -130,7 +130,7 @@ public class LatestReadCommittedTxDB implements TxDatabase, Constants {
             db.createCollection(collectionName);
             baseCol = db.getCollection(collectionName);
         }
-        LRCTxDBCollection lrcCol = new LRCTxDBCollection(this, baseCol, collectionName);
+        LRCTxDBCollection lrcCol = new LRCTxDBCollection(this, new MongoProfilingCollection(baseCol), collectionName);
         ret = collections.putIfAbsent(collectionName, lrcCol);
         if (ret == null)
             ret = lrcCol;

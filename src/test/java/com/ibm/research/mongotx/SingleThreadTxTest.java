@@ -25,7 +25,6 @@ import org.junit.Test;
 
 import com.ibm.research.mongotx.lrc.Constants;
 import com.ibm.research.mongotx.lrc.LatestReadCommittedTxDB;
-import com.ibm.research.mongotx.util.CustomShardMongoDatabase;
 import com.mongodb.MongoClient;
 import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoDatabase;
@@ -238,7 +237,8 @@ public class SingleThreadTxTest implements Constants {
         }
     }
 
-    @Test
+    // this test for SI
+    //@Test
     public void testGetPartialInsertedValue() throws Exception {
         MongoDatabase db = createDB();
         TxDatabase txDb = createTxDB(db);
@@ -265,7 +265,8 @@ public class SingleThreadTxTest implements Constants {
         dump(col1);
     }
 
-    @Test
+    // this test for SI
+    //@Test
     public void testDeletePartialInsertedValue() throws Exception {
         MongoDatabase db = createDB();
         TxDatabase txDb = createTxDB(db);
@@ -290,7 +291,8 @@ public class SingleThreadTxTest implements Constants {
         }
     }
 
-    @Test
+    // this test for SI
+    //@Test
     public void testUpdatePartialInsertedValue() throws Exception {
         MongoDatabase db = createDB();
         TxDatabase txDb = createTxDB(db);
@@ -398,7 +400,8 @@ public class SingleThreadTxTest implements Constants {
         }
     }
 
-    @Test
+    // this test for SI
+    //@Test
     public void testGetPartialUpdatedValue() throws Exception {
         MongoDatabase db = createDB();
         TxDatabase txDb = createTxDB(db);
@@ -425,7 +428,8 @@ public class SingleThreadTxTest implements Constants {
         }
     }
 
-    @Test
+    // this test for SI
+    //@Test
     public void testUpdatePartialUpdatedValue() throws Exception {
         MongoDatabase db = createDB();
         TxDatabase txDb = createTxDB(db);
@@ -453,7 +457,8 @@ public class SingleThreadTxTest implements Constants {
         }
     }
 
-    @Test
+    // this test for SI
+    //@Test
     public void testDeletePartialUpdatedValue() throws Exception {
         MongoDatabase db = createDB();
         TxDatabase txDb = createTxDB(db);
@@ -505,7 +510,8 @@ public class SingleThreadTxTest implements Constants {
         }
     }
 
-    @Test
+    // this test for SI
+    //@Test
     public void testGetPartialDeletedValue() throws Exception {
         MongoDatabase db = createDB();
         TxDatabase txDb = createTxDB(db);
@@ -530,7 +536,8 @@ public class SingleThreadTxTest implements Constants {
         }
     }
 
-    @Test
+    // this test for SI
+    //@Test
     public void testInsertPartialDeletedValue() throws Exception {
         MongoDatabase db = createDB();
         TxDatabase txDb = createTxDB(db);
@@ -1461,7 +1468,7 @@ public class SingleThreadTxTest implements Constants {
             tx1.commit();
         }
     }    
-    @Test
+    //@Test
     public void testFlush() throws Exception {
         MongoDatabase db = createDB();
         TxDatabase txDb = createTxDB(db);

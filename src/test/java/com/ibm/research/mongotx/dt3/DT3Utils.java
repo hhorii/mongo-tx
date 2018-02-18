@@ -19,17 +19,13 @@ package com.ibm.research.mongotx.dt3;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
 import java.util.Properties;
 import java.util.Random;
-import java.util.Set;
 
 import org.bson.Document;
 
 import com.ibm.research.mongotx.TxDatabase;
 import com.ibm.research.mongotx.lrc.LatestReadCommittedTxDB;
-import com.ibm.research.mongotx.util.CustomShardMongoDatabase;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoClientURI;
 import com.mongodb.ReadPreference;

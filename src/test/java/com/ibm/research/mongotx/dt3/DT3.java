@@ -26,8 +26,8 @@ import com.ibm.research.mongotx.Tx;
 import com.ibm.research.mongotx.TxCollection;
 import com.ibm.research.mongotx.TxDatabase;
 import com.ibm.research.mongotx.TxRollback;
-import com.ibm.research.mongotx.si.Constants;
-import com.ibm.research.mongotx.util.Stats;
+import com.ibm.research.mongotx.lrc.Constants;
+import com.ibm.research.mongotx.lrc.MongoProfilingCollection;
 
 public class DT3 extends DT3Utils implements Constants {
     public static String[] workloadMixNames = { "Standard", "High-Volume", };
@@ -89,9 +89,9 @@ public class DT3 extends DT3Utils implements Constants {
             for (String symbol : symbols)
                 ret.add(findOne(tx, quotes, symbol));
             tx.commit();
-            Stats.count("DT3-COMMIT-QUOTE");
+            MongoProfilingCollection.count("DT3-COMMIT-QUOTE");
         } catch (Exception ex) {
-            Stats.count("DT3-ROLLBACK-QUOTE");
+            MongoProfilingCollection.count("DT3-ROLLBACK-QUOTE");
             if (ex instanceof TxRollback)
                 throw ex;
             tx.rollback();
@@ -104,9 +104,9 @@ public class DT3 extends DT3Utils implements Constants {
         try {
             doAccount(client, tx, accountId, userId);
             tx.commit();
-            Stats.count("DT3-COMMIT-ACCOUNT");
+            MongoProfilingCollection.count("DT3-COMMIT-ACCOUNT");
         } catch (Exception ex) {
-            Stats.count("DT3-ROLLBACK-ACCOUNT");
+            MongoProfilingCollection.count("DT3-ROLLBACK-ACCOUNT");
             if (ex instanceof TxRollback)
                 throw ex;
             tx.rollback();
@@ -143,9 +143,9 @@ public class DT3 extends DT3Utils implements Constants {
         try {
             doAccountUpdate(client, tx, accountId, userId, fullName, password, email, creditcard, address);
             tx.commit();
-            Stats.count("DT3-COMMIT-ACCOUNTUPDATE");
+            MongoProfilingCollection.count("DT3-COMMIT-ACCOUNTUPDATE");
         } catch (Exception ex) {
-            Stats.count("DT3-ROLLBACK-ACCOUNTUPDATE");
+            MongoProfilingCollection.count("DT3-ROLLBACK-ACCOUNTUPDATE");
             if (ex instanceof TxRollback)
                 throw ex;
             tx.rollback();
@@ -174,9 +174,9 @@ public class DT3 extends DT3Utils implements Constants {
         try {
             doHome(client, tx, accountId, userId);
             tx.commit();
-            Stats.count("DT3-COMMIT-HOME");
+            MongoProfilingCollection.count("DT3-COMMIT-HOME");
         } catch (Exception ex) {
-            Stats.count("DT3-ROLLBACK-HOME");
+            MongoProfilingCollection.count("DT3-ROLLBACK-HOME");
             if (ex instanceof TxRollback)
                 throw ex;
             tx.rollback();
@@ -211,10 +211,10 @@ public class DT3 extends DT3Utils implements Constants {
         try {
             Document ret = doLogin(client, tx, userId, password);
             tx.commit();
-            Stats.count("DT3-COMMIT-LOGIN");
+            MongoProfilingCollection.count("DT3-COMMIT-LOGIN");
             return ret;
         } catch (Exception ex) {
-            Stats.count("DT3-ROLLBACK-LOGIN");
+            MongoProfilingCollection.count("DT3-ROLLBACK-LOGIN");
             if (ex instanceof TxRollback)
                 throw ex;
             if (tx != null)
@@ -250,10 +250,10 @@ public class DT3 extends DT3Utils implements Constants {
         try {
             Document ret = doLogout(client, tx, accountId, userId);
             tx.commit();
-            Stats.count("DT3-COMMIT-LOGOUT");
+            MongoProfilingCollection.count("DT3-COMMIT-LOGOUT");
             return ret;
         } catch (Exception ex) {
-            Stats.count("DT3-ROLLBACK-LOGOUT");
+            MongoProfilingCollection.count("DT3-ROLLBACK-LOGOUT");
             if (ex instanceof TxRollback)
                 throw ex;
             tx.rollback();
@@ -288,10 +288,10 @@ public class DT3 extends DT3Utils implements Constants {
         try {
             Portfolio ret = doPortfolio(client, tx, accountId, userId);
             tx.commit();
-            Stats.count("DT3-COMMIT-PORTFOLIO");
+            MongoProfilingCollection.count("DT3-COMMIT-PORTFOLIO");
             return ret;
         } catch (Exception ex) {
-            Stats.count("DT3-ROLLBACK-PORTFOLIO");
+            MongoProfilingCollection.count("DT3-ROLLBACK-PORTFOLIO");
             if (ex instanceof TxRollback)
                 throw ex;
             tx.rollback();
@@ -322,10 +322,10 @@ public class DT3 extends DT3Utils implements Constants {
         try {
             Document ret = doRegister(client, tx, userId, password, fullname, address, email, creditCard, openBalance, balance, newAccountId);
             tx.commit();
-            Stats.count("DT3-COMMIT-REGISTER");
+            MongoProfilingCollection.count("DT3-COMMIT-REGISTER");
             return ret;
         } catch (Exception ex) {
-            Stats.count("DT3-ROLLBACK-REGISTER");
+            MongoProfilingCollection.count("DT3-ROLLBACK-REGISTER");
             if (ex instanceof TxRollback)
                 throw ex;
             tx.rollback();
@@ -377,9 +377,9 @@ public class DT3 extends DT3Utils implements Constants {
         try {
             doSell(client, tx, accountId, userId, holdingId, newOrderId);
             tx.commit();
-            Stats.count("DT3-COMMIT-SELL");
+            MongoProfilingCollection.count("DT3-COMMIT-SELL");
         } catch (Exception ex) {
-            Stats.count("DT3-ROLLBACK-SELL");
+            MongoProfilingCollection.count("DT3-ROLLBACK-SELL");
             if (ex instanceof TxRollback)
                 throw ex;
             tx.rollback();
@@ -531,9 +531,9 @@ public class DT3 extends DT3Utils implements Constants {
         try {
             doBuy(client, tx, accountId, userId, symbol, quantity, newHoldingId, newOrderId);
             tx.commit();
-            Stats.count("DT3-COMMIT-BUY");
+            MongoProfilingCollection.count("DT3-COMMIT-BUY");
         } catch (Exception ex) {
-            Stats.count("DT3-ROLLBACK-BUY");
+            MongoProfilingCollection.count("DT3-ROLLBACK-BUY");
             if (ex instanceof TxRollback)
                 throw ex;
             tx.rollback();
@@ -907,18 +907,18 @@ public class DT3 extends DT3Utils implements Constants {
             rollbackedInMeasure[idx] += 1;
         }
     }
-    
+
     public static void main(String[] args) throws Exception {
         TxDatabase db = DT3Utils.getDB();
         Client client = new Client(db);
         startEvaluation();
-        
+
         for (int i = 0; i < 100000; ++i) {
             if (i % 1000 == 0)
                 System.out.println("executed: " + i + "\ttx");
             client.runNext();
         }
-        
+
         System.exit(0);
     }
 
@@ -999,7 +999,7 @@ public class DT3 extends DT3Utils implements Constants {
 
         Thread.sleep(rampUp * 1000L);
 
-        Stats.clear();
+        MongoProfilingCollection.clearCounters();
 
         startEvaluation();
 
@@ -1011,7 +1011,7 @@ public class DT3 extends DT3Utils implements Constants {
 
         stopClients();
 
-        Stats.stats();
+        MongoProfilingCollection.printCounters(System.out);
 
         for (Client client : clients)
             client.join(60 * 1000L);
@@ -1030,47 +1030,47 @@ public class DT3 extends DT3Utils implements Constants {
             DT3.Client dt3Client = new DT3.Client(client);
             dt3Client.runLoginTransaction();
             System.out.println("login");
-            Stats.stats();
-            Stats.clear();
+            MongoProfilingCollection.printCounters(System.out);
+            MongoProfilingCollection.clearCounters();
             dt3Client.runAccountTransaction();
             System.out.println("account");
-            Stats.stats();
-            Stats.clear();
+            MongoProfilingCollection.printCounters(System.out);
+            MongoProfilingCollection.clearCounters();
             dt3Client.runBuyTransaction();
             System.out.println("buy");
-            Stats.stats();
-            Stats.clear();
+            MongoProfilingCollection.printCounters(System.out);
+            MongoProfilingCollection.clearCounters();
             dt3Client.runSellTransaction();
             System.out.println("sell");
-            Stats.stats();
-            Stats.clear();
+            MongoProfilingCollection.printCounters(System.out);
+            MongoProfilingCollection.clearCounters();
             dt3Client.runHomeTransaction();
             System.out.println("home");
-            Stats.stats();
-            Stats.clear();
+            MongoProfilingCollection.printCounters(System.out);
+            MongoProfilingCollection.clearCounters();
             dt3Client.runPortfolioTransaction();
             System.out.println("portfolio");
-            Stats.stats();
-            Stats.clear();
+            MongoProfilingCollection.printCounters(System.out);
+            MongoProfilingCollection.clearCounters();
             dt3Client.runQuoteTransaction();
             System.out.println("quote");
-            Stats.stats();
-            Stats.clear();
+            MongoProfilingCollection.printCounters(System.out);
+            MongoProfilingCollection.clearCounters();
             dt3Client.runUpdateAccountTransaction();
             System.out.println("updateAccount");
-            Stats.stats();
-            Stats.clear();
+            MongoProfilingCollection.printCounters(System.out);
+            MongoProfilingCollection.clearCounters();
             dt3Client.runRegisterTransaction();
             System.out.println("register");
-            Stats.stats();
-            Stats.clear();
+            MongoProfilingCollection.printCounters(System.out);
+            MongoProfilingCollection.clearCounters();
             dt3Client.runLoginTransaction();
-            Stats.stats();
-            Stats.clear();
+            MongoProfilingCollection.printCounters(System.out);
+            MongoProfilingCollection.clearCounters();
             dt3Client.runLogoutTransaction();
             System.out.println("logout");
-            Stats.stats();
-            Stats.clear();
+            MongoProfilingCollection.printCounters(System.out);
+            MongoProfilingCollection.clearCounters();
         }
 
         client.close();

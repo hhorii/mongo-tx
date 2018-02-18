@@ -8,10 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.bson.Document;
 
 import com.ibm.research.mongotx.TxDatabase;
-import com.ibm.research.mongotx.si.Constants;
-import com.ibm.research.mongotx.si.SDAVTxDB;
-import com.ibm.research.mongotx.si.SDAVTxDB.SDAVTxDBCollection;
-import com.ibm.research.mongotx.si.SDNVTxDB;
+import com.ibm.research.mongotx.lrc.Constants;
 import com.mongodb.client.MongoCollection;
 
 public class DT3Load extends DT3Utils implements Constants {
@@ -226,57 +223,13 @@ public class DT3Load extends DT3Utils implements Constants {
     }
 
     private static void insert(MongoCollection<Document> col, Document doc, Document shardKey) {
-        if (txType.startsWith("sdav")) {
-            col.insertOne(//
-                    new Document(shardKey)//
-                            .append(ATTR_ID, doc.get(ATTR_ID))//
-                            .append(SDAVTxDB.ATTR_SDAV_LATEST,
-                                    new Document(doc)//
-                                            .append(SDAVTxDB.ATTR_VERSION_SNID, 0L)//
-                                            .append(SDAVTxDB.ATTR_VERSION_TXID, "INIT")//
-                    )//
-            );
-        } else if (txType.startsWith("sd")) {
-            col.insertOne(//
-                    new Document(shardKey)//
-                            .append(ATTR_ID, doc.get(ATTR_ID))//
-                            .append(SDNVTxDB.getPinnedVersionField(0),
-                                    new Document(doc)//
-                                            .append(SDNVTxDB.ATTR_VERSION_SNID, 0L)//
-                                            .append(SDNVTxDB.ATTR_VERSION_TXID, "INIT")//
-                            )//
-                            .append(SDNVTxDB.ATTR_SDNV_ANCHOR_SNID, 0)//
-                            .append(SDNVTxDB.ATTR_SDNV_ARCHIVED_SNIDS, new ArrayList<>())//
-            );
-        } else {
-            throw new IllegalStateException("invalid type: " + txType);
-        }
+        col.insertOne(doc);
     }
 
     public static void init(TxDatabase client) {
-//        try {
-//            client.setInt(new Document(ATTR_SEQ_KEY, COL_ACCOUNT), -1);
-//        } catch (Exception ex) {
-//            System.out.println("skip setting: " + COL_ACCOUNT);
-//        }
-//        try {
-//            client.setInt(new Document(ATTR_SEQ_KEY, COL_ORDER), -1);
-//        } catch (Exception ex) {
-//            System.out.println("skip setting: " + COL_ORDER);
-//        }
-//        try {
-//            client.setInt(new Document(ATTR_SEQ_KEY, COL_HOLDING), -1);
-//        } catch (Exception ex) {
-//            System.out.println("skip setting: " + COL_HOLDING);
-//        }
     }
 
     public static void finish(TxDatabase client) {
-        if (txType.startsWith("sdav") && !txType.endsWith("noidx")) {
-            ((SDAVTxDBCollection) client.getCollection(COL_ACCOUNT)).buildIndex(new Document(SDAVTxDB.ATTR_SDAV_LATEST + "._forIndex", insertstartuser));
-            ((SDAVTxDBCollection) client.getCollection(COL_ORDER)).buildIndex(new Document(SDAVTxDB.ATTR_SDAV_LATEST + "._forIndex", insertstartuser));
-            ((SDAVTxDBCollection) client.getCollection(COL_HOLDING)).buildIndex(new Document(SDAVTxDB.ATTR_SDAV_LATEST + "._forIndex", insertstartuser));
-        }
     }
 
     public static void main(String[] args) throws Exception {
