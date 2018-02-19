@@ -18,11 +18,13 @@ import com.ibm.research.mongotx.TxDatabase;
 import com.ibm.research.mongotx.TxRollback;
 import com.ibm.research.mongotx.lrc.LatestReadCommittedTxDB;
 import com.ibm.research.mongotx.lrc.MongoProfilingCollection;
+import com.mongodb.DBCollection;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoClientURI;
 import com.mongodb.ReadPreference;
 import com.mongodb.WriteConcern;
 import com.mongodb.client.FindIterable;
+import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.result.DeleteResult;
@@ -79,6 +81,8 @@ public class MongoTxDriver extends DB {
         tx = null;
 
         txOps.clear();
+
+        MongoProfilingCollection.count("YCSB_COMMIT");
     }
 
     static final Object INCLUDE = new Object();
@@ -105,11 +109,18 @@ public class MongoTxDriver extends DB {
             boolean drop = props.getProperty("ycsb.db.drop", "false").toLowerCase().equals("true");
 
             mongoClient = new MongoClient(uri);
-            MongoDatabase db = mongoClient.getDatabase(uri.getDatabase()).withReadPreference(ReadPreference.primary()).withWriteConcern(WriteConcern.SAFE);
+            String dbName = uri.getDatabase();
+            if (dbName == null)
+                dbName = "test";
+            
+            MongoDatabase db = mongoClient.getDatabase(dbName).withReadPreference(ReadPreference.primary()).withWriteConcern(WriteConcern.SAFE);
             if (drop) {
-                db.drop();
-                System.err.println("DROP " + uri.getDatabase());
-                db = mongoClient.getDatabase(uri.getDatabase()).withReadPreference(ReadPreference.primary()).withWriteConcern(WriteConcern.SAFE);
+                MongoCollection<Document> userCol = db.getCollection(userTable);
+                if (userCol != null)
+                    userCol.deleteMany(new Document());
+                //db.drop();
+                System.err.println("CLEAR " + uri.getDatabase() + "/" + userTable);
+                //db = mongoClient.getDatabase(uri.getDatabase()).withReadPreference(ReadPreference.primary()).withWriteConcern(WriteConcern.SAFE);
             }
 
             txDb = new LatestReadCommittedTxDB(mongoClient, db);
@@ -138,12 +149,20 @@ public class MongoTxDriver extends DB {
         init0(getProperties());
     }
 
+    Object getKey(String key) {
+        if (key.startsWith("user")) {
+            return key;
+        } else {
+            return Long.parseLong(key);
+        }
+    }
+
     @Override
     public int read(String table, String key, Set<String> fields, HashMap<String, ByteIterator> result) {
         try {
             Tx tx = getOrBeginTransaction(TYPE.READ);
             TxCollection collection = txDb.getCollection(table);
-            Document query = new Document("_id", key);
+            Document query = new Document("_id", getKey(key));
 
             FindIterable<Document> findIterable = collection.find(tx, query);
 
@@ -155,8 +174,10 @@ public class MongoTxDriver extends DB {
 
             if (queryResult != null) {
                 commitTransactionIfNecessary(TYPE.READ);
+                MongoProfilingCollection.count("YCSB_READ_OK");
                 return 0;
             } else {
+                MongoProfilingCollection.count("YCSB_READ_NG");
                 transactionRolledBack();
                 return 1;
             }
@@ -166,18 +187,24 @@ public class MongoTxDriver extends DB {
         }
     }
 
-    public String buildMaxScanKey(String startkey, int recordcount) {
-        long keynum = Long.parseLong(startkey.substring("user".length()));
-        long endKeyNum = keynum + (recordcount - 1);
-        int zeropadding = startkey.length() - "user".length() - Long.toString(keynum).length();
+    public Document buildScanQuery(String startkey, int recordcount) {
+        if (startkey.startsWith("user")) {
+            long keynum = Long.parseLong(startkey.substring("user".length()));
+            long endKeyNum = keynum + (recordcount - 1);
+            int zeropadding = startkey.length() - "user".length() - Long.toString(keynum).length();
 
-        String value = Long.toString(endKeyNum);
-        int fill = zeropadding - value.length();
-        String prekey = "user";
-        for (int i = 0; i < fill; i++) {
-            prekey += '0';
+            String value = Long.toString(endKeyNum);
+            int fill = zeropadding - value.length();
+            String prekey = "user";
+            for (int i = 0; i < fill; i++) {
+                prekey += '0';
+            }
+            return new Document("$gte", startkey).append("$lt", prekey + value);
+        } else {
+            long keynum = Long.parseLong(startkey);
+            long endKeyNum = keynum + (recordcount - 1);
+            return new Document("$gte", keynum).append("$lt", endKeyNum);
         }
-        return prekey + value;
     }
 
     @Override
@@ -209,8 +236,7 @@ public class MongoTxDriver extends DB {
             Tx tx = getOrBeginTransaction(TYPE.SCAN);
             TxCollection collection = txDb.getCollection(table);
 
-            Document scanRange = new Document("$gte", startkey).append("$lte", buildMaxScanKey(startkey, recordcount));
-            Document query = new Document(scanField, scanRange);
+            Document query = new Document(scanField, buildScanQuery(startkey, recordcount));
 
             FindIterable<Document> findIterable = collection.find(tx, query);
 
@@ -220,6 +246,7 @@ public class MongoTxDriver extends DB {
                 //System.err.println("Nothing found in scan for key " + startkey);
                 commitTransactionIfNecessary(TYPE.SCAN);
                 //return Status.ERROR;
+                MongoProfilingCollection.count("YCSB_SCAN_NG");
                 return 0;
             }
 
@@ -234,7 +261,7 @@ public class MongoTxDriver extends DB {
                 result.add(resultMap);
             }
 
-            //System.out.println("XXX_YCSB_SCAN-" + result.size() + "/" + scan);
+            MongoProfilingCollection.count("YCSB_SCAN_OK");
 
             commitTransactionIfNecessary(TYPE.SCAN);
 
@@ -255,11 +282,11 @@ public class MongoTxDriver extends DB {
             Tx tx = getOrBeginTransaction(TYPE.UPDATE);
             TxCollection collection = txDb.getCollection(table);
 
-            Document query = new Document("_id", key);
+            Document query = new Document("_id", getKey(key));
             Document doc = collection.find(tx, query).first();
             if (doc == null) {
                 transactionRolledBack();
-                //commitTransactionIfNecessary(TYPE.UPDATE);
+                MongoProfilingCollection.count("YCSB_UPDATE_NOMATCH");
                 return 1;
             }
 
@@ -270,9 +297,10 @@ public class MongoTxDriver extends DB {
             UpdateResult result = collection.replaceOne(tx, query, doc);
             if (result.wasAcknowledged() && result.getMatchedCount() == 0) {
                 transactionRolledBack();
-                //commitTransactionIfNecessary(TYPE.UPDATE);
+                MongoProfilingCollection.count("YCSB_UPDATE_NOMATCH");
                 return 1;
             }
+            MongoProfilingCollection.count("YCSB_UPDATE_OK");
             commitTransactionIfNecessary(TYPE.UPDATE);
             return 0;
         } catch (Exception e) {
@@ -285,16 +313,19 @@ public class MongoTxDriver extends DB {
     public int insert(String table, String key, HashMap<String, ByteIterator> values) {
         try {
             TxCollection collection = txDb.getCollection(table);
-            Document toInsert = new Document("_id", key);
+            Document toInsert;
+            toInsert = new Document("_id", getKey(key));
+            toInsert.append(scanField, getKey(key));
             for (Map.Entry<String, ByteIterator> entry : values.entrySet()) {
                 toInsert.put(entry.getKey(), entry.getValue().toArray());
             }
-            toInsert.append(scanField, key);
             collection.insertOne(getOrBeginTransaction(TYPE.INSERT), toInsert);
             commitTransactionIfNecessary(TYPE.INSERT);
+            MongoProfilingCollection.count("YCSB_INSERT_OK");
             return 0;
         } catch (Exception e) {
             //e.printStackTrace();
+            MongoProfilingCollection.count("YCSB_INSERT_NG");
             if (e instanceof TxRollback)
                 transactionRolledBack();
             return 1;
@@ -307,24 +338,28 @@ public class MongoTxDriver extends DB {
             Tx tx = getOrBeginTransaction(TYPE.DELETE);
             TxCollection collection = txDb.getCollection(table);
 
-            Document query = new Document("_id", key);
+            Document query = new Document("_id", getKey(key));
             Document doc = collection.find(tx, query).first();
             if (doc == null) {
                 commitTransactionIfNecessary(TYPE.DELETE);
+                MongoProfilingCollection.count("YCSB_DELETE_NOMATCH");
                 return 0;
             }
 
             DeleteResult result = collection.deleteOne(tx, query);
             if (result.wasAcknowledged() && result.getDeletedCount() == 0) {
                 commitTransactionIfNecessary(TYPE.DELETE);
+                MongoProfilingCollection.count("YCSB_DELETE_NOMATCH");
                 return 0;
             }
 
             commitTransactionIfNecessary(TYPE.DELETE);
+            MongoProfilingCollection.count("YCSB_DELETE_OK");
             return 0;
         } catch (Exception e) {
             if (e instanceof TxRollback)
                 transactionRolledBack();
+            MongoProfilingCollection.count("YCSB_DELETE_NG");
             return 1;
         }
     }
@@ -340,6 +375,7 @@ public class MongoTxDriver extends DB {
     private void transactionRolledBack() {
         tx = null;
         txOps.clear();
+        MongoProfilingCollection.count("YCSB_ROLLBACK");
     }
 
 }

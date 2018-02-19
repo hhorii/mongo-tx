@@ -11,10 +11,12 @@ import org.bson.codecs.configuration.CodecRegistry;
 import org.bson.conversions.Bson;
 
 import com.mongodb.MongoNamespace;
+import com.mongodb.ReadConcern;
 import com.mongodb.ReadPreference;
 import com.mongodb.WriteConcern;
 import com.mongodb.bulk.BulkWriteResult;
 import com.mongodb.client.AggregateIterable;
+import com.mongodb.client.ChangeStreamIterable;
 import com.mongodb.client.DistinctIterable;
 import com.mongodb.client.FindIterable;
 import com.mongodb.client.ListIndexesIterable;
@@ -22,17 +24,22 @@ import com.mongodb.client.MapReduceIterable;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.model.BulkWriteOptions;
 import com.mongodb.client.model.CountOptions;
+import com.mongodb.client.model.CreateIndexOptions;
+import com.mongodb.client.model.DeleteOptions;
+import com.mongodb.client.model.DropIndexOptions;
 import com.mongodb.client.model.FindOneAndDeleteOptions;
 import com.mongodb.client.model.FindOneAndReplaceOptions;
 import com.mongodb.client.model.FindOneAndUpdateOptions;
 import com.mongodb.client.model.IndexModel;
 import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.InsertManyOptions;
+import com.mongodb.client.model.InsertOneOptions;
 import com.mongodb.client.model.RenameCollectionOptions;
 import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.model.WriteModel;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.UpdateResult;
+import com.mongodb.session.ClientSession;
 
 public class MongoProfilingCollection implements MongoCollection<Document> {
 
@@ -386,5 +393,346 @@ public class MongoProfilingCollection implements MongoCollection<Document> {
 
         base.renameCollection(newCollectionNamespace, renameCollectionOptions);
     }
+    
+    @Override
+    public AggregateIterable<Document> aggregate(ClientSession arg0, List<? extends Bson> arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <TResult> AggregateIterable<TResult> aggregate(ClientSession arg0, List<? extends Bson> arg1, Class<TResult> arg2) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public BulkWriteResult bulkWrite(ClientSession arg0, List<? extends WriteModel<? extends Document>> arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public BulkWriteResult bulkWrite(ClientSession arg0, List<? extends WriteModel<? extends Document>> arg1, BulkWriteOptions arg2) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public long count(ClientSession arg0) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public long count(ClientSession arg0, Bson arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public long count(ClientSession arg0, Bson arg1, CountOptions arg2) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public String createIndex(ClientSession arg0, Bson arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public String createIndex(ClientSession arg0, Bson arg1, IndexOptions arg2) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public List<String> createIndexes(List<IndexModel> arg0, CreateIndexOptions arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public List<String> createIndexes(ClientSession arg0, List<IndexModel> arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public List<String> createIndexes(ClientSession arg0, List<IndexModel> arg1, CreateIndexOptions arg2) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public DeleteResult deleteMany(Bson arg0, DeleteOptions arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public DeleteResult deleteMany(ClientSession arg0, Bson arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public DeleteResult deleteMany(ClientSession arg0, Bson arg1, DeleteOptions arg2) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public DeleteResult deleteOne(Bson arg0, DeleteOptions arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public DeleteResult deleteOne(ClientSession arg0, Bson arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public DeleteResult deleteOne(ClientSession arg0, Bson arg1, DeleteOptions arg2) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <TResult> DistinctIterable<TResult> distinct(String arg0, Bson arg1, Class<TResult> arg2) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <TResult> DistinctIterable<TResult> distinct(ClientSession arg0, String arg1, Class<TResult> arg2) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <TResult> DistinctIterable<TResult> distinct(ClientSession arg0, String arg1, Bson arg2, Class<TResult> arg3) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void drop(ClientSession arg0) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void dropIndex(String arg0, DropIndexOptions arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void dropIndex(Bson arg0, DropIndexOptions arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void dropIndex(ClientSession arg0, String arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void dropIndex(ClientSession arg0, Bson arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void dropIndex(ClientSession arg0, String arg1, DropIndexOptions arg2) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void dropIndex(ClientSession arg0, Bson arg1, DropIndexOptions arg2) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void dropIndexes(ClientSession arg0) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void dropIndexes(DropIndexOptions arg0) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void dropIndexes(ClientSession arg0, DropIndexOptions arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public FindIterable<Document> find(ClientSession arg0) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <TResult> FindIterable<TResult> find(ClientSession arg0, Class<TResult> arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public FindIterable<Document> find(ClientSession arg0, Bson arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <TResult> FindIterable<TResult> find(ClientSession arg0, Bson arg1, Class<TResult> arg2) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Document findOneAndDelete(ClientSession arg0, Bson arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Document findOneAndDelete(ClientSession arg0, Bson arg1, FindOneAndDeleteOptions arg2) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Document findOneAndReplace(ClientSession arg0, Bson arg1, Document arg2) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Document findOneAndReplace(ClientSession arg0, Bson arg1, Document arg2, FindOneAndReplaceOptions arg3) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Document findOneAndUpdate(ClientSession arg0, Bson arg1, Bson arg2) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Document findOneAndUpdate(ClientSession arg0, Bson arg1, Bson arg2, FindOneAndUpdateOptions arg3) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public ReadConcern getReadConcern() {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void insertMany(ClientSession arg0, List<? extends Document> arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void insertMany(ClientSession arg0, List<? extends Document> arg1, InsertManyOptions arg2) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void insertOne(Document arg0, InsertOneOptions arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void insertOne(ClientSession arg0, Document arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void insertOne(ClientSession arg0, Document arg1, InsertOneOptions arg2) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public ListIndexesIterable<Document> listIndexes(ClientSession arg0) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <TResult> ListIndexesIterable<TResult> listIndexes(ClientSession arg0, Class<TResult> arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public MapReduceIterable<Document> mapReduce(ClientSession arg0, String arg1, String arg2) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <TResult> MapReduceIterable<TResult> mapReduce(ClientSession arg0, String arg1, String arg2, Class<TResult> arg3) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void renameCollection(ClientSession arg0, MongoNamespace arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void renameCollection(ClientSession arg0, MongoNamespace arg1, RenameCollectionOptions arg2) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public UpdateResult replaceOne(ClientSession arg0, Bson arg1, Document arg2) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public UpdateResult replaceOne(ClientSession arg0, Bson arg1, Document arg2, UpdateOptions arg3) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public UpdateResult updateMany(ClientSession arg0, Bson arg1, Bson arg2) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public UpdateResult updateMany(ClientSession arg0, Bson arg1, Bson arg2, UpdateOptions arg3) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public UpdateResult updateOne(ClientSession arg0, Bson arg1, Bson arg2) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public UpdateResult updateOne(ClientSession arg0, Bson arg1, Bson arg2, UpdateOptions arg3) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public ChangeStreamIterable<Document> watch() {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <TResult> ChangeStreamIterable<TResult> watch(Class<TResult> arg0) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public ChangeStreamIterable<Document> watch(List<? extends Bson> arg0) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public ChangeStreamIterable<Document> watch(ClientSession arg0) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <TResult> ChangeStreamIterable<TResult> watch(List<? extends Bson> arg0, Class<TResult> arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <TResult> ChangeStreamIterable<TResult> watch(ClientSession arg0, Class<TResult> arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public ChangeStreamIterable<Document> watch(ClientSession arg0, List<? extends Bson> arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <TResult> ChangeStreamIterable<TResult> watch(ClientSession arg0, List<? extends Bson> arg1, Class<TResult> arg2) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public MongoCollection<Document> withReadConcern(ReadConcern arg0) {
+        throw new UnsupportedOperationException();
+    }
+
 
 }

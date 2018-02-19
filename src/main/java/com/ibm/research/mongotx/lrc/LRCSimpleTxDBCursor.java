@@ -31,6 +31,7 @@ import com.mongodb.ServerCursor;
 import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoIterable;
+import com.mongodb.client.model.Collation;
 
 class LRCSimpleTxDBCursor implements FindIterable<Document>, Constants {
 
@@ -202,6 +203,56 @@ class LRCSimpleTxDBCursor implements FindIterable<Document>, Constants {
 
     @Override
     public FindIterable<Document> batchSize(int batchSize) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public FindIterable<Document> collation(Collation arg0) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public FindIterable<Document> comment(String arg0) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public FindIterable<Document> hint(Bson arg0) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public FindIterable<Document> max(Bson arg0) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public FindIterable<Document> maxAwaitTime(long arg0, TimeUnit arg1) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public FindIterable<Document> maxScan(long arg0) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public FindIterable<Document> min(Bson arg0) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public FindIterable<Document> returnKey(boolean arg0) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public FindIterable<Document> showRecordId(boolean arg0) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public FindIterable<Document> snapshot(boolean arg0) {
         throw new UnsupportedOperationException();
     }
 

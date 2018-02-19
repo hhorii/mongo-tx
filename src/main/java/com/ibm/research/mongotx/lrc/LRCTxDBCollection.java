@@ -47,6 +47,7 @@ import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.MongoIterable;
+import com.mongodb.client.model.Collation;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.UpdateResult;
 
@@ -195,7 +196,8 @@ public class LRCTxDBCollection implements TxCollection, Constants {
     List<Document> select(LRCTx tx, Document query, int limit, boolean forUpdate) throws TxRollback {
         List<Document> results = new ArrayList<>();
 
-        if (query.size() == 1 && query.containsKey(ATTR_ID)) {
+        if (query.size() == 1 && query.containsKey(ATTR_ID)//
+                && (!(query.get(ATTR_ID) instanceof Document) || !query.get(ATTR_ID).toString().contains("$"))) {
             //keyonly
             Document ret = (Document) findOne(tx, query.get(ATTR_ID), forUpdate);
             if (ret != null)
@@ -929,6 +931,36 @@ public class LRCTxDBCollection implements TxCollection, Constants {
             return parent.useCursor(useCursor);
         }
 
+        @Override
+        public AggregateIterable<Document> bypassDocumentValidation(Boolean arg0) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public AggregateIterable<Document> collation(Collation arg0) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public AggregateIterable<Document> comment(String arg0) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public AggregateIterable<Document> hint(Bson arg0) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public AggregateIterable<Document> maxAwaitTime(long arg0, TimeUnit arg1) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void toCollection() {
+            throw new UnsupportedOperationException();
+        }
+
     }
 
     @Override
@@ -959,4 +991,5 @@ public class LRCTxDBCollection implements TxCollection, Constants {
         baseCol.createIndex(unsafeKeys);
     }
 
+    
 }
