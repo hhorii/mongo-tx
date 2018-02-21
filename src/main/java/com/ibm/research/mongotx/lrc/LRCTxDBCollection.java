@@ -451,9 +451,13 @@ public class LRCTxDBCollection implements TxCollection, Constants {
             }
 
             if (hasLocalUnsafe(tx, cachedSd2v)) {
-                Document query = new Document(userQuery)//
-                        .append(ATTR_ID, key)//
-                        .append(ATTR_VALUE_UNSAFE + "." + ATTR_VALUE_UNSAFE_TXID, tx.txId);
+                Document query = new Document(ATTR_ID, key);
+                for (Map.Entry<String, Object> field : userQuery.entrySet()) {
+                    if (field.getKey().equals(ATTR_ID))
+                        continue;
+                    query.append(ATTR_VALUE_UNSAFE + "." + field.getKey(), field.getValue());
+                }
+                query.append(ATTR_VALUE_UNSAFE + "." + ATTR_VALUE_UNSAFE_TXID, tx.txId);
 
                 Document prev = getSafeVersion(cachedSd2v);
                 if (newUnsafe == null)
@@ -991,5 +995,4 @@ public class LRCTxDBCollection implements TxCollection, Constants {
         baseCol.createIndex(unsafeKeys);
     }
 
-    
 }

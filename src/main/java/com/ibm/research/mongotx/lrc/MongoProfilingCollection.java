@@ -85,7 +85,7 @@ public class MongoProfilingCollection implements MongoCollection<Document> {
 
     final MongoCollection<Document> base;
 
-    MongoProfilingCollection(MongoCollection<Document> base) {
+    public MongoProfilingCollection(MongoCollection<Document> base) {
         this.base = base;
     }
 

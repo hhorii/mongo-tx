@@ -1,12 +1,13 @@
 YCSB_ARGS=
-YCSB_ARGS="${YCSB_ARGS} -P workloads/workloada"
+#YCSB_ARGS="${YCSB_ARGS} -P workloads/workloada"
+YCSB_ARGS="${YCSB_ARGS} -P workloads/workloade"
+YCSB_ARGS="${YCSB_ARGS} -p insertorder=ordered"
 YCSB_ARGS="${YCSB_ARGS} -db com.ibm.research.mongotx.ycsb.MongoTxDriver"
 YCSB_ARGS="${YCSB_ARGS} -s"
 YCSB_ARGS="${YCSB_ARGS} -threads 8"
 YCSB_ARGS="${YCSB_ARGS} -p recordcount=1000"
 YCSB_ARGS="${YCSB_ARGS} -p operationcount=100000"
 YCSB_ARGS="${YCSB_ARGS} -p mongodb.url=mongodb://localhost:27017/ycsb"
-
 
 CP=
 CP=${CP}:../target/classes

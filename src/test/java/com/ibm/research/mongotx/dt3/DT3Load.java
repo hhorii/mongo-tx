@@ -13,7 +13,6 @@ import com.mongodb.client.MongoCollection;
 
 public class DT3Load extends DT3Utils implements Constants {
 
-    private static String txType = System.getProperty("mongotx.si.type", "sd2v");
     private static int insertstartuser = Integer.parseInt(System.getProperty("insertstartuser", "0"));
     private static int insertcountuser = Integer.parseInt(System.getProperty("insertcountuser", Integer.toString(maxUsers)));
     private static int insertstartquote = Integer.parseInt(System.getProperty("insertstartquote", "0"));
@@ -57,6 +56,7 @@ public class DT3Load extends DT3Utils implements Constants {
         accountData.put("_forIndex", insertstartuser);//for indexing
 
         insert(accounts, accountData, new Document(A_PROFILE_USERID, userId));
+        DT3.addIndexedKey(client, "A_PROFILE_USERID", userId, accountId);
 
         Document accountProfile = new Document();
         accountProfile.put("_id", userId);
@@ -97,6 +97,8 @@ public class DT3Load extends DT3Utils implements Constants {
         order.put("_forIndex", insertstartuser);//for indexing
         insert(client.getCollection(COL_ORDER).getBaseCollection(), order, new Document(O_ACCOUNT_ACCOUNTID, order.get(O_ACCOUNT_ACCOUNTID)));
 
+        DT3.addIndexedKey(client, "O_ACCOUNT_ACCOUNTID", accountData.get(A_ACCOUNTID), orderId);
+
         return order;
     }
 
@@ -117,6 +119,7 @@ public class DT3Load extends DT3Utils implements Constants {
         holding.put("_forIndex", insertstartuser);
 
         insert(client.getCollection(COL_HOLDING).getBaseCollection(), holding, new Document(H_ACCOUNT_ACCOUNTID, accountId));
+        DT3.addIndexedKey(client,  "H_ACCOUNT_ACCOUNTID", accountId, holdingId);
 
         return holding;
     }

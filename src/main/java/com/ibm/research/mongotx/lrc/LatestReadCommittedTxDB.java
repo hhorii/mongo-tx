@@ -153,7 +153,7 @@ public class LatestReadCommittedTxDB implements TxDatabase, Constants {
             if (baseCol == null)
                 return null;
             else
-                return createTxCollection(name, baseCol);
+                return createTxCollection(name, new MongoProfilingCollection(baseCol));
         }
 
         return ret;

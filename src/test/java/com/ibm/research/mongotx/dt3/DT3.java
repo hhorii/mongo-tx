@@ -28,8 +28,13 @@ import com.ibm.research.mongotx.TxDatabase;
 import com.ibm.research.mongotx.TxRollback;
 import com.ibm.research.mongotx.lrc.Constants;
 import com.ibm.research.mongotx.lrc.MongoProfilingCollection;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.model.UpdateOptions;
 
 public class DT3 extends DT3Utils implements Constants {
+
+    public static final boolean useCustomIndex = System.getProperty("mongotx.usesecondary") != null;
+
     public static String[] workloadMixNames = { "Standard", "High-Volume", };
     public final static int SCENARIOMIX_STANDARD = 0;
     public final static int SCENARIOMIX_HIGHVOLUME = 1;
@@ -72,6 +77,8 @@ public class DT3 extends DT3Utils implements Constants {
     }
 
     static List<Document> select(Tx tx, TxCollection col, Document query) {
+        if (useCustomIndex)
+            throw new IllegalStateException();
         List<Document> ret = new ArrayList<>();
 
         for (Document d : col.find(tx, query))
@@ -134,8 +141,51 @@ public class DT3 extends DT3Utils implements Constants {
             throw new TxRollback("error");
         }
         ret.accountProfile = findOne(tx, accountProfiles, userId);
-        ret.userOrders = select(tx, orders, new Document(O_ACCOUNT_ACCOUNTID, accountId));
+        if (useCustomIndex)
+            ret.userOrders = getIndexedDocuments(client, tx, orders, "O_ACCOUNT_ACCOUNTID", accountId);
+        else
+            ret.userOrders = select(tx, orders, new Document(O_ACCOUNT_ACCOUNTID, accountId));
         return ret;
+    }
+
+    public static List<Document> getIndexedDocuments(TxDatabase client, Tx tx, TxCollection col, String idxName, Object idxValue) {
+        MongoCollection<Document> idxCol = getIndexCollection(client);
+        Document idxKey = new Document("name", idxName).append("value", idxValue);
+        List<Document> ret = new ArrayList<>();
+        Document keySet = idxCol.find(new Document(ATTR_ID, idxKey)).first();
+        if (keySet == null)
+            return ret;
+        for (Object key : (List<Object>) keySet.get("KEYS")) {
+            Document doc = col.find(tx, new Document(ATTR_ID, key)).first();
+            if (doc != null)
+                ret.add(doc);
+        }
+        return ret;
+    }
+
+    public static void addIndexedKey(TxDatabase client, String indexName, Object indexValue, Object indexedKey) {
+        MongoCollection<Document> idxCol = getIndexCollection(client);
+        Document idxKey = new Document("name", indexName).append("value", indexValue);
+        idxCol.updateOne(//
+                new Document().append("_id", idxKey), //
+                new Document().append("$addToSet", new Document().append("KEYS", indexedKey)), //
+                new UpdateOptions().upsert(true));
+    }
+
+    public static void removeIndexedKey(TxDatabase client, Tx tx, String indexName, Object indexValue, Object indexedKey) {
+        MongoCollection<Document> idxCol = getIndexCollection(client);
+        Document idxKey = new Document("name", indexName).append("value", indexValue);
+        idxCol.updateOne(//
+                new Document().append("_id", idxKey), //
+                new Document().append("$pull", new Document().append("KEYS", indexedKey)), //
+                new UpdateOptions().upsert(true));
+    }
+
+    public static MongoCollection<Document> getIndexCollection(TxDatabase client) {
+        MongoCollection<Document> indexCol = client.getDatabase().getCollection("DT3_IDX");
+        if (indexCol == null)
+            throw new IllegalStateException();
+        return new MongoProfilingCollection(indexCol);
     }
 
     public static void runAccountUpdateTransaction(TxDatabase client, int accountId, String userId, String fullName, String password, String email, String creditcard, String address) throws TxRollback {
@@ -202,7 +252,10 @@ public class DT3 extends DT3Utils implements Constants {
             tx.rollback();
             throw new TxRollback("error");
         }
-        ret.holdings = select(tx, holdings, new Document(H_ACCOUNT_ACCOUNTID, accountId));
+        if (useCustomIndex)
+            ret.holdings = getIndexedDocuments(client, tx, holdings, "H_ACCOUNT_ACCOUNTID", accountId);
+        else
+            ret.holdings = select(tx, holdings, new Document(H_ACCOUNT_ACCOUNTID, accountId));
         return ret;
     }
 
@@ -227,7 +280,12 @@ public class DT3 extends DT3Utils implements Constants {
     // TradeServletAction.doLogin()
     public static Document doLogin(TxDatabase client, Tx tx, String userId, String password) throws TxRollback {
         TxCollection accounts = client.getCollection(COL_ACCOUNT);
-        List<Document> ret = select(tx, accounts, new Document(A_PROFILE_USERID, userId));
+        List<Document> ret;
+
+        if (useCustomIndex)
+            ret = getIndexedDocuments(client, tx, accounts, "A_PROFILE_USERID", userId);
+        else
+            ret = select(tx, accounts, new Document(A_PROFILE_USERID, userId));
 
         if (ret.size() != 1) {
             //System.err.println("login fail: " + userId + ": " + Math.abs(userId.hashCode()) % cols.size() + ":" + ret.size());
@@ -306,7 +364,10 @@ public class DT3 extends DT3Utils implements Constants {
 
         Portfolio ret = new Portfolio();
 
-        ret.holdings = select(tx, holdings, new Document(H_ACCOUNT_ACCOUNTID, accountId));
+        if (useCustomIndex)
+            ret.holdings = getIndexedDocuments(client, tx, holdings, "H_ACCOUNT_ACCOUNTID", accountId);
+        else
+            ret.holdings = select(tx, holdings, new Document(H_ACCOUNT_ACCOUNTID, accountId));
         ret.quotes = new ArrayList<>();
         for (Document myHolding : ret.holdings) {
             if (((String) myHolding.get(H_QUOTE_SYMBOL)).equals("_"))
@@ -450,20 +511,23 @@ public class DT3 extends DT3Utils implements Constants {
 
         insert(tx, client.getCollection(COL_HOLDING), holding);
 
+        if (useCustomIndex)
+            addIndexedKey(client, "H_ACCOUNT_ACCOUNTID", accountId, newHoldingId);
+
         return holding;
     }
 
-    static List<String> holdingIdPool = new ArrayList<>();
-
-    private static synchronized void addPooledHoldingId(String holdingId) {
-        holdingIdPool.add(holdingId);
-    }
-
-    private static synchronized String getPooledHoldingId() {
-        if (holdingIdPool.isEmpty())
-            return null;
-        return holdingIdPool.remove(holdingIdPool.size() - 1);
-    }
+    //    static List<String> holdingIdPool = new ArrayList<>();
+    //
+    //    private static synchronized void addPooledHoldingId(String holdingId) {
+    //        //holdingIdPool.add(holdingId);
+    //    }
+    //
+    //    private static synchronized String getPooledHoldingId() {
+    //        if (holdingIdPool.isEmpty())
+    //            return null;
+    //        return holdingIdPool.remove(holdingIdPool.size() - 1);
+    //    }
 
     private static void completeOrder(TxDatabase client, Tx tx, int accountId, String userId, Document accountData, Document quoteData, Document holdingData, Document orderData, String newHoldingId) throws TxRollback {
         TxCollection orders = client.getCollection(COL_ORDER);
@@ -490,10 +554,17 @@ public class DT3 extends DT3Utils implements Constants {
             holdingData = createHolding(client, tx, accountId, quoteID, quantity, price, newHoldingId);
         } else if (orderType.compareToIgnoreCase("sell") == 0) {
             String holdingId = (String) holdingData.get(H_HOLDINGID);
-            //remove(tx, holdings, new Document(H_HOLDINGID, holdingId).append(H_ACCOUNT_ACCOUNTID, accountId));//remove
-            put(tx, holdings, new Document(H_HOLDINGID, holdingId).append(H_ACCOUNT_ACCOUNTID, accountId), //
-                    new Document(H_HOLDINGID, holdingId).append(H_ACCOUNT_ACCOUNTID, accountId).append(H_QUOTE_SYMBOL, "_").append(H_QUANTITY, 0));//remove
-            addPooledHoldingId(holdingId);
+
+            double newQuantity = holdingData.getDouble(H_QUANTITY) - quantity;
+            if (newQuantity < 0.0) {
+                remove(tx, holdings, new Document(H_HOLDINGID, holdingId).append(H_ACCOUNT_ACCOUNTID, accountId));//remove
+                if (useCustomIndex)
+                    removeIndexedKey(client, tx, "H_ACCOUNT_ACCOUNTID", accountId, holdingId);
+            } else {
+                put(tx, holdings, new Document(H_HOLDINGID, holdingId).append(H_ACCOUNT_ACCOUNTID, accountId), //
+                        new Document(H_HOLDINGID, holdingId).append(H_ACCOUNT_ACCOUNTID, accountId).append(H_QUOTE_SYMBOL, "_").append(H_QUANTITY, newQuantity));//remove
+            }
+            //addPooledHoldingId(holdingId);
         }
 
         orderData.put(O_ORDERSTATUS, "closed");
@@ -511,7 +582,7 @@ public class DT3 extends DT3Utils implements Constants {
         order.put("_id", newOrderId);
         order.put(O_ORDERID, newOrderId);
         order.put(O_ORDERTYPE, orderType);
-        order.put(O_ORDERSTATUS, "closed");
+        order.put(O_ORDERSTATUS, "open");
         order.put(O_OPENDATE, currentDate);
         order.put(O_QUANTITY, quantity);
         order.put(O_PRICE, (Double) quoteData.get(Q_PRICE));
@@ -521,6 +592,9 @@ public class DT3 extends DT3Utils implements Constants {
         order.put(O_QUOTE_SYMBOL, quoteData.get(Q_SYMBOL));
 
         insert(tx, orders, order);
+
+        if (useCustomIndex)
+            addIndexedKey(client, "O_ACCOUNT_ACCOUNTID", accountId, newOrderId);
 
         return order;
     }
@@ -814,11 +888,7 @@ public class DT3 extends DT3Utils implements Constants {
         int nextHoldingIdIdx = 0;
 
         synchronized String getNextHoldingId(TxDatabase db) {
-            String pool = getPooledHoldingId();
-            if (pool != null)
-                return pool;
-            else
-                return "h" + db.getClientId() + ":" + nextHoldingIdIdx++;
+            return "h" + db.getClientId() + ":" + nextHoldingIdIdx++;
         }
 
         int delta = 100000;
@@ -908,7 +978,7 @@ public class DT3 extends DT3Utils implements Constants {
         }
     }
 
-    public static void main(String[] args) throws Exception {
+    public static void main1(String[] args) throws Exception {
         TxDatabase db = DT3Utils.getDB();
         Client client = new Client(db);
         startEvaluation();
@@ -922,14 +992,14 @@ public class DT3 extends DT3Utils implements Constants {
         System.exit(0);
     }
 
-    public static void main1(String[] args) throws Exception {
+    public static void main(String[] args) throws Exception {
 
         if (System.getProperties().containsKey("load")) {
             DT3Load.main(args);
             return;
         }
 
-        int numOfClients = Integer.parseInt(System.getProperty("client", "2"));
+        int numOfClients = Integer.parseInt(System.getProperty("client", "1"));
         long rampUp = Integer.parseInt(System.getProperty("rampup", "30"));
         //long measure = Integer.parseInt(System.getProperty("measure", "120"));
         long measure = Integer.parseInt(System.getProperty("measure", "60"));

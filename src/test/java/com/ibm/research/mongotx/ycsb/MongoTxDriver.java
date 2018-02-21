@@ -1,11 +1,14 @@
 package com.ibm.research.mongotx.ycsb;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.Vector;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -18,7 +21,7 @@ import com.ibm.research.mongotx.TxDatabase;
 import com.ibm.research.mongotx.TxRollback;
 import com.ibm.research.mongotx.lrc.LatestReadCommittedTxDB;
 import com.ibm.research.mongotx.lrc.MongoProfilingCollection;
-import com.mongodb.DBCollection;
+import com.mongodb.DuplicateKeyException;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoClientURI;
 import com.mongodb.ReadPreference;
@@ -27,6 +30,7 @@ import com.mongodb.client.FindIterable;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoCursor;
 import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.model.UpdateOptions;
 import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.UpdateResult;
 import com.yahoo.ycsb.ByteArrayByteIterator;
@@ -44,23 +48,18 @@ public class MongoTxDriver extends DB {
     };
 
     private static AtomicInteger INIT_COUNT = new AtomicInteger(0);
-
     private static MongoClient mongoClient;
-
     private static MongoDatabase database;
-
     private static TxDatabase txDb;
+    private static int txSize = 5;
+    private static int scan = 0;
+    private static String scanField = null;
+    private static String userTable = "usertable";
+    private static MongoCollection<Document> secondaryIdx = null;
+    private static int numOfIndex = 0;
+    private static int byteIndexLen = 2;
 
     private Tx tx = null;
-
-    private static int txSize = 5;
-
-    private static int scan = 0;
-
-    private static String scanField = null;
-
-    private static String userTable = "usertable";
-
     private List<TYPE> txOps = new ArrayList<>();
 
     private Tx getOrBeginTransaction(TYPE type) {
@@ -100,10 +99,6 @@ public class MongoTxDriver extends DB {
 
         scanField = props.getProperty("mongotx.scan", "_id");
 
-        int numOfIndex = 0;
-        if (props.containsKey("mongotx.index"))
-            numOfIndex = Integer.parseInt(props.getProperty("mongotx.index"));
-
         try {
             MongoClientURI uri = new MongoClientURI(url);
             boolean drop = props.getProperty("ycsb.db.drop", "false").toLowerCase().equals("true");
@@ -112,7 +107,7 @@ public class MongoTxDriver extends DB {
             String dbName = uri.getDatabase();
             if (dbName == null)
                 dbName = "test";
-            
+
             MongoDatabase db = mongoClient.getDatabase(dbName).withReadPreference(ReadPreference.primary()).withWriteConcern(WriteConcern.SAFE);
             if (drop) {
                 MongoCollection<Document> userCol = db.getCollection(userTable);
@@ -130,8 +125,26 @@ public class MongoTxDriver extends DB {
 
             txDb.getCollection(userTable).createIndex(new Document(scanField, 1));
 
-            for (int i = 0; i < numOfIndex; ++i) {
-                txDb.getCollection("usertable").createIndex(new Document("field" + i, 1));
+            numOfIndex = 0;
+            if (props.containsKey("mongotx.index"))
+                numOfIndex = Integer.parseInt(props.getProperty("mongotx.index"));
+
+            for (int i = 0; i < numOfIndex; ++i)
+                txDb.getCollection(userTable).createIndex(new Document("field" + i, 1));
+
+            if (props.containsKey("mongotx.usesecondary")) {
+                if (db.getCollection("YCSB_INDEX") == null) {
+                    try {
+                        db.createCollection("YCSB_INDEX");
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                    }
+                    if (db.getCollection("YCSB_INDEX") == null)
+                        throw new IllegalStateException("can not create index table.");
+                }
+                secondaryIdx = new MongoProfilingCollection(db.getCollection("YCSB_INDEX"));
+                if (drop)
+                    db.getCollection("YCSB_INDEX").deleteMany(new Document());
             }
 
             database = db;
@@ -226,11 +239,7 @@ public class MongoTxDriver extends DB {
         }
     }
 
-    @Override
-    public int scan(String table, String startkey, int recordcount, Set<String> fields, Vector<HashMap<String, ByteIterator>> result) {
-        if (scan != 0)
-            recordcount = scan;
-
+    private int scanSD2V(String table, String startkey, int recordcount, Set<String> fields, Vector<HashMap<String, ByteIterator>> result) {
         MongoCursor<Document> cursor = null;
         try {
             Tx tx = getOrBeginTransaction(TYPE.SCAN);
@@ -243,10 +252,6 @@ public class MongoTxDriver extends DB {
             cursor = findIterable.iterator();
 
             if (!cursor.hasNext()) {
-                //System.err.println("Nothing found in scan for key " + startkey);
-                commitTransactionIfNecessary(TYPE.SCAN);
-                //return Status.ERROR;
-                MongoProfilingCollection.count("YCSB_SCAN_NG");
                 return 0;
             }
 
@@ -260,29 +265,93 @@ public class MongoTxDriver extends DB {
 
                 result.add(resultMap);
             }
-
-            MongoProfilingCollection.count("YCSB_SCAN_OK");
-
-            commitTransactionIfNecessary(TYPE.SCAN);
-
-            return 0;
+            return result.size();
         } catch (Exception e) {
             transactionRolledBack();
-            return 1;
+            return -1;
         } finally {
             if (cursor != null) {
                 cursor.close();
             }
         }
+
+    }
+
+    public int scanWithIdx(String table, String startkey, int recordcount, Set<String> fields, Vector<HashMap<String, ByteIterator>> result) {
+        Tx tx = getOrBeginTransaction(TYPE.SCAN);
+        TxCollection collection = txDb.getCollection(table);
+
+        long startKeyLong = (Long) Long.parseLong(startkey);
+        String indexKey = "_id_" + (startKeyLong / 100L); // one index - 100 entries
+
+        for (int i = 0; i < 100; ++i) {
+            Document index = secondaryIdx.find(new Document("_id", indexKey)).first();
+            if (index == null) {
+                return 0;
+            }
+
+            List<Long> keys = (List<Long>) index.get("KEYS");
+            Collections.sort(keys);
+            for (Long key : keys) {
+                if (key < startKeyLong)
+                    continue;
+
+                Document query = new Document("_id", key);
+                FindIterable<Document> findIterable = collection.find(tx, query);
+                Document queryResult = findIterable.first();
+                if (queryResult != null) {
+                    HashMap<String, ByteIterator> resultElem = new HashMap<>();
+                    if (queryResult != null) {
+                        fillMap(resultElem, queryResult);
+                        result.addElement(resultElem);
+                        if (result.size() >= recordcount)
+                            return result.size();
+                    }
+                }
+                indexKey = "_id_" + ((startKeyLong / 100L) + 1L); // one index - 100 entries
+            }
+        }
+        return result.size();
     }
 
     @Override
-    public int update(String table, String key, HashMap<String, ByteIterator> values) {
+    public int scan(String table, String startkey, int recordcount, Set<String> fields, Vector<HashMap<String, ByteIterator>> result) {
+        if (scan != 0)
+            recordcount = scan;
+
+        int ret;
+        if (secondaryIdx == null)
+            ret = scanSD2V(table, startkey, recordcount, fields, result);
+        else
+            ret = scanWithIdx(table, startkey, recordcount, fields, result);
+
+        if (ret == 0) {
+            MongoProfilingCollection.count("YCSB_SCAN_NG");
+            ret = 1;
+        } else {
+            MongoProfilingCollection.count("YCSB_SCAN_OK");
+            ret = 0;
+        }
+
+        commitTransactionIfNecessary(TYPE.SCAN);
+
+        return ret;
+
+    }
+
+    @Override
+    public int update(String table, String key, HashMap<String, ByteIterator> request) {
+        Object keyObj = getKey(key);
+
+        Document req = new Document();
+        for (Map.Entry<String, ByteIterator> entry : request.entrySet())
+            req.put(entry.getKey(), entry.getValue().toArray());
+
         try {
             Tx tx = getOrBeginTransaction(TYPE.UPDATE);
             TxCollection collection = txDb.getCollection(table);
 
-            Document query = new Document("_id", getKey(key));
+            Document query = new Document("_id", keyObj);
             Document doc = collection.find(tx, query).first();
             if (doc == null) {
                 transactionRolledBack();
@@ -290,8 +359,17 @@ public class MongoTxDriver extends DB {
                 return 1;
             }
 
-            for (Map.Entry<String, ByteIterator> entry : values.entrySet()) {
-                doc.put(entry.getKey(), entry.getValue().toArray());
+            if (numOfIndex > 0 && secondaryIdx != null) {
+                for (int i = 0; i < numOfIndex; ++i) {
+                    String field = "field" + i;
+                    if (req.containsKey(field)) {
+                        removeSecondaryIndexIfNecessary(keyObj, field, ((Binary) doc.get(field)).getData());
+                    }
+                }
+            }
+
+            for (Map.Entry<String, Object> entry : req.entrySet()) {
+                doc.append(entry.getKey(), entry.getValue());
             }
 
             UpdateResult result = collection.replaceOne(tx, query, doc);
@@ -301,6 +379,16 @@ public class MongoTxDriver extends DB {
                 return 1;
             }
             MongoProfilingCollection.count("YCSB_UPDATE_OK");
+
+            if (numOfIndex > 0 && secondaryIdx != null) {
+                for (int i = 0; i < numOfIndex; ++i) {
+                    String field = "field" + i;
+                    if (req.containsKey(field)) {
+                        addSecondaryIndexIfNecessary(keyObj, field, req.get(field));
+                    }
+                }
+            }
+
             commitTransactionIfNecessary(TYPE.UPDATE);
             return 0;
         } catch (Exception e) {
@@ -309,22 +397,114 @@ public class MongoTxDriver extends DB {
         }
     }
 
+    private void addSecondaryIndexIfNecessary(Object key, String indexedCol, Object indexedValue) {
+        if (secondaryIdx == null)
+            return;
+
+        if (indexedValue instanceof Long) {
+            String indexKey = indexedCol + "_" + ((Long) indexedValue / 100L); // one index - 100 entries
+            int numOfTries = 0;
+            while (true) {
+                ++numOfTries;
+                try {
+                    secondaryIdx.updateOne(//
+                            new Document().append("_id", indexKey), //
+                            new Document().append("$addToSet", new Document().append("KEYS", key)), //
+                            new UpdateOptions().upsert(true));
+                    break;
+                } catch (DuplicateKeyException ex) {
+                    if (numOfTries == 10)
+                        throw new IllegalStateException(ex);
+                    continue;
+                }
+            }
+            //System.out.println(secondaryIdx.find(new Document("_id", indexKey)).first());
+
+        } else if (indexedValue instanceof byte[]) {
+            byte[] indexedBytes = (byte[]) indexedValue;
+            StringBuilder builder = new StringBuilder();
+            builder.append(indexedCol).append("_");
+            for (int i = 0; i < Math.min(byteIndexLen, indexedBytes.length); ++i)
+                builder.append(Byte.toString(indexedBytes[i]));
+            String indexKey = builder.toString(); // first 10 bytes
+            while (true) {
+                try {
+                    secondaryIdx.updateOne(//
+                            new Document().append("_id", indexKey), //
+                            new Document().append("$addToSet", new Document().append("KEYS", key)), //
+                            new UpdateOptions().upsert(true));
+                    //System.out.println(secondaryIdx.find(new Document("_id", indexKey)).first());
+                    break;
+                } catch (DuplicateKeyException ex) {
+                    continue;
+                }
+            }
+        } else {
+            throw new IllegalStateException("unsupportted type: " + key.getClass());
+        }
+    }
+
+    private void removeSecondaryIndexIfNecessary(Object key, String indexedCol, Object indexedValue) {
+        if (secondaryIdx == null)
+            return;
+
+        if (indexedValue instanceof Long) {
+            String indexKey = indexedCol + "_" + ((Long) indexedValue / 100L); // one index - 100 entries
+            secondaryIdx.updateOne(//
+                    new Document().append("_id", indexKey), //
+                    new Document().append("$pull", new Document().append("KEYS", key)), //
+                    new UpdateOptions().upsert(true));
+        } else if (indexedValue instanceof byte[]) {
+            byte[] indexedBytes = (byte[]) indexedValue;
+            StringBuilder builder = new StringBuilder();
+            builder.append(indexedCol).append("_");
+            for (int i = 0; i < Math.min(byteIndexLen, indexedBytes.length); ++i)
+                builder.append("-").append(Byte.toString(indexedBytes[i]));
+            String indexKey = builder.toString(); // first 10 bytes
+
+            Document ret = secondaryIdx.findOneAndUpdate(//
+                    new Document().append("_id", indexKey), //
+                    new Document().append("$pull", new Document().append("KEYS", key)));
+            if (ret.containsKey("KEYS") && ((List) ret.get("KEYS")).size() == 1) {
+                secondaryIdx.deleteOne(new Document("_id", indexKey).append("KEYS", new ArrayList()));
+            }
+
+        } else {
+            throw new IllegalStateException("unsupportted type: " + indexedValue.getClass());
+        }
+    }
+
     @Override
     public int insert(String table, String key, HashMap<String, ByteIterator> values) {
         try {
+            Object keyObj = getKey(key);
             TxCollection collection = txDb.getCollection(table);
             Document toInsert;
-            toInsert = new Document("_id", getKey(key));
-            toInsert.append(scanField, getKey(key));
+            toInsert = new Document("_id", keyObj);
+            toInsert.append(scanField, keyObj);
             for (Map.Entry<String, ByteIterator> entry : values.entrySet()) {
                 toInsert.put(entry.getKey(), entry.getValue().toArray());
+                //toInsert.put(entry.getKey(), new byte[] { 0, 0, 0, 0 });
             }
             collection.insertOne(getOrBeginTransaction(TYPE.INSERT), toInsert);
+
+            addSecondaryIndexIfNecessary(keyObj, "_id", keyObj);
+
+            if (numOfIndex > 0 && secondaryIdx != null) {
+                for (int i = 0; i < numOfIndex; ++i) {
+                    String field = "field" + i;
+                    if (toInsert.containsKey(field)) {
+                        addSecondaryIndexIfNecessary(keyObj, field, ((byte[]) toInsert.get(field)));
+                    }
+                }
+            }
+
             commitTransactionIfNecessary(TYPE.INSERT);
+
             MongoProfilingCollection.count("YCSB_INSERT_OK");
             return 0;
         } catch (Exception e) {
-            //e.printStackTrace();
+            //            e.printStackTrace();
             MongoProfilingCollection.count("YCSB_INSERT_NG");
             if (e instanceof TxRollback)
                 transactionRolledBack();
@@ -334,11 +514,12 @@ public class MongoTxDriver extends DB {
 
     @Override
     public int delete(String table, String key) {
+        Object keyObj = getKey(key);
         try {
             Tx tx = getOrBeginTransaction(TYPE.DELETE);
             TxCollection collection = txDb.getCollection(table);
 
-            Document query = new Document("_id", getKey(key));
+            Document query = new Document("_id", keyObj);
             Document doc = collection.find(tx, query).first();
             if (doc == null) {
                 commitTransactionIfNecessary(TYPE.DELETE);
@@ -355,6 +536,15 @@ public class MongoTxDriver extends DB {
 
             commitTransactionIfNecessary(TYPE.DELETE);
             MongoProfilingCollection.count("YCSB_DELETE_OK");
+
+            if (numOfIndex > 0 && secondaryIdx != null) {
+                for (int i = 0; i < numOfIndex; ++i) {
+                    String field = "field" + i;
+                    if (doc.containsKey(field))
+                        removeSecondaryIndexIfNecessary(keyObj, field, ((Binary) doc.get(field)).getData());
+                }
+            }
+
             return 0;
         } catch (Exception e) {
             if (e instanceof TxRollback)
