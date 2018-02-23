@@ -109,8 +109,10 @@ public class MongoTxDriver extends DB {
             MongoDatabase db = mongoClient.getDatabase(dbName).withReadPreference(ReadPreference.primary()).withWriteConcern(WriteConcern.ACKNOWLEDGED);
             if (drop) {
                 MongoCollection<Document> userCol = db.getCollection(userTable);
-                if (userCol != null)
+                if (userCol != null) {
                     userCol.deleteMany(new Document());
+                    userCol.dropIndexes();
+                }
                 //db.drop();
                 System.err.println("CLEAR " + uri.getDatabase() + "/" + userTable);
                 //db = mongoClient.getDatabase(uri.getDatabase()).withReadPreference(ReadPreference.primary()).withWriteConcern(WriteConcern.SAFE);

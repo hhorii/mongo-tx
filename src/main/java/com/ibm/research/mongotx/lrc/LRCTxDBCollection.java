@@ -98,8 +98,12 @@ public class LRCTxDBCollection implements TxCollection, Constants {
                 continue;
 
             Document newIndex = new Document();
-            for (String fieldPath : key.keySet())
-                newIndex.put(ATTR_VALUE_UNSAFE + "." + fieldPath, indexInfo.get(fieldPath));
+            for (String fieldPath : key.keySet()) {
+                if (indexInfo.get(fieldPath) == null)
+                    newIndex.put(ATTR_VALUE_UNSAFE + "." + fieldPath, 1);
+                else
+                    newIndex.put(ATTR_VALUE_UNSAFE + "." + fieldPath, indexInfo.get(fieldPath));
+            }
 
             baseCol.createIndex(newIndex);
 
