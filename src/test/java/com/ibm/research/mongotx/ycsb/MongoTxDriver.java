@@ -410,7 +410,7 @@ public class MongoTxDriver extends DB {
                             new Document().append("$addToSet", new Document().append("KEYS", key)), //
                             new UpdateOptions().upsert(true));
                     break;
-                } catch (DuplicateKeyException ex) {
+                } catch (Exception ex) {
                     if (numOfTries == 10)
                         throw new IllegalStateException(ex);
                     continue;
