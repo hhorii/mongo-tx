@@ -1,14 +1,12 @@
 package com.ibm.research.mongotx.ycsb;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.Vector;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -97,7 +95,7 @@ public class MongoTxDriver extends DB {
         if (props.containsKey("mongotx.scan"))
             scan = Integer.parseInt(props.getProperty("mongotx.scan"));
 
-        scanField = props.getProperty("mongotx.scan", "_id");
+        scanField = props.getProperty("mongotx.scanfield", "_id");
 
         try {
             MongoClientURI uri = new MongoClientURI(url);
@@ -108,7 +106,7 @@ public class MongoTxDriver extends DB {
             if (dbName == null)
                 dbName = "test";
 
-            MongoDatabase db = mongoClient.getDatabase(dbName).withReadPreference(ReadPreference.primary()).withWriteConcern(WriteConcern.SAFE);
+            MongoDatabase db = mongoClient.getDatabase(dbName).withReadPreference(ReadPreference.primary()).withWriteConcern(WriteConcern.ACKNOWLEDGED);
             if (drop) {
                 MongoCollection<Document> userCol = db.getCollection(userTable);
                 if (userCol != null)
@@ -282,7 +280,7 @@ public class MongoTxDriver extends DB {
         TxCollection collection = txDb.getCollection(table);
 
         long startKeyLong = (Long) Long.parseLong(startkey);
-        String indexKey = "_id_" + (startKeyLong / 100L); // one index - 100 entries
+        String indexKey = scanField + (startKeyLong / 100L); // one index - 100 entries
 
         for (int i = 0; i < 100; ++i) {
             Document index = secondaryIdx.find(new Document("_id", indexKey)).first();
