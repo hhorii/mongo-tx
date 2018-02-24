@@ -330,6 +330,7 @@ public class MongoTxDriver extends DB {
             ret = 1;
         } else {
             MongoProfilingCollection.count("YCSB_SCAN_OK");
+            MongoProfilingCollection.count("YCSB_SCAN-" + ret);
             ret = 0;
         }
 
