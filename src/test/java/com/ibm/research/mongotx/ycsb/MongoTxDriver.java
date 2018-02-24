@@ -274,7 +274,6 @@ public class MongoTxDriver extends DB {
                 cursor.close();
             }
         }
-
     }
 
     public int scanWithIdx(String table, String startkey, int recordcount, Set<String> fields, Vector<HashMap<String, ByteIterator>> result) {
@@ -282,7 +281,7 @@ public class MongoTxDriver extends DB {
         TxCollection collection = txDb.getCollection(table);
 
         long startKeyLong = (Long) Long.parseLong(startkey);
-        String indexKey = scanField + (startKeyLong / 100L); // one index - 100 entries
+        String indexKey = scanField + "_" + (startKeyLong / 100L); // one index - 100 entries
 
         for (int i = 0; i < 100; ++i) {
             Document index = secondaryIdx.find(new Document("_id", indexKey)).first();
