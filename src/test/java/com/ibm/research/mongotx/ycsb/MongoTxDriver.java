@@ -286,7 +286,7 @@ public class MongoTxDriver extends DB {
         for (int i = 0; i < 100; ++i) {
             Document index = secondaryIdx.find(new Document("_id", indexKey)).first();
             if (index == null) {
-                return 0;
+                return result.size();
             }
 
             List<Long> keys = (List<Long>) index.get("KEYS");
@@ -307,7 +307,7 @@ public class MongoTxDriver extends DB {
                             return result.size();
                     }
                 }
-                indexKey = "_id_" + ((startKeyLong / 100L) + 1L); // one index - 100 entries
+                indexKey = "_id_" + ((++startKeyLong / 100L)); // one index - 100 entries
             }
         }
         return result.size();
