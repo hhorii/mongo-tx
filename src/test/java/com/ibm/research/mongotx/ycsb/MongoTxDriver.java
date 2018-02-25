@@ -123,8 +123,6 @@ public class MongoTxDriver extends DB {
             if (txDb.getCollection(userTable) == null)
                 txDb.createCollection(userTable);
 
-            txDb.getCollection(userTable).createIndex(new Document(scanField, 1));
-
             numOfIndex = 0;
             if (props.containsKey("mongotx.index"))
                 numOfIndex = Integer.parseInt(props.getProperty("mongotx.index"));
@@ -145,6 +143,8 @@ public class MongoTxDriver extends DB {
                 secondaryIdx = new MongoProfilingCollection(db.getCollection("YCSB_INDEX"));
                 if (drop)
                     db.getCollection("YCSB_INDEX").deleteMany(new Document());
+            } else {
+                txDb.getCollection(userTable).createIndex(new Document(scanField, 1));
             }
 
             database = db;
