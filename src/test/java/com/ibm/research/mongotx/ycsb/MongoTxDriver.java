@@ -143,9 +143,8 @@ public class MongoTxDriver extends DB {
                 secondaryIdx = new MongoProfilingCollection(db.getCollection("YCSB_INDEX"));
                 if (drop)
                     db.getCollection("YCSB_INDEX").deleteMany(new Document());
-            } else {
-                txDb.getCollection(userTable).createIndex(new Document(scanField, 1));
             }
+            txDb.getCollection(userTable).createIndex(new Document(scanField, 1));
 
             database = db;
         } catch (Exception e1) {
@@ -215,7 +214,7 @@ public class MongoTxDriver extends DB {
             return new Document("$gte", startkey).append("$lt", prekey + value);
         } else {
             long keynum = Long.parseLong(startkey);
-            long endKeyNum = keynum + (recordcount - 1);
+            long endKeyNum = keynum + recordcount;
             return new Document("$gte", keynum).append("$lt", endKeyNum);
         }
     }
