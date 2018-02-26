@@ -498,6 +498,10 @@ public class MongoTxDriver extends DB {
                     }
                 }
             }
+            
+            if (!"_id".equals(scanField)) {
+                addSecondaryIndexIfNecessary(keyObj, scanField, keyObj);
+            }
 
             commitTransactionIfNecessary(TYPE.INSERT);
 
