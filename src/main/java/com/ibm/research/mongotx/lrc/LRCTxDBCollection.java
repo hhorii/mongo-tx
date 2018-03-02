@@ -214,6 +214,8 @@ public class LRCTxDBCollection implements TxCollection, Constants {
         }
 
         Document unsafeQuery = createUnsafeQuery(query);
+        if (query.containsKey(ATTR_ID))
+            unsafeQuery.append(ATTR_ID, query.get(ATTR_ID));
         Iterator<Document> unsafeCursor = baseCol.find(unsafeQuery).iterator();
 
         Set<Object> localResultKeys = new HashSet<>();
