@@ -67,6 +67,10 @@ public class LRCTxDBCollection implements TxCollection, Constants {
         initUnsafeIndexesIfNecesasry();
         initShardKeysIfNecessary();
     }
+    
+    public void addShardKey(String sharedKey) {
+        shardKeys.add(sharedKey);
+    }
 
     public String getName() {
         return name;

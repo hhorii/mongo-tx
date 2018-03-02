@@ -17,6 +17,7 @@ import com.ibm.research.mongotx.Tx;
 import com.ibm.research.mongotx.TxCollection;
 import com.ibm.research.mongotx.TxDatabase;
 import com.ibm.research.mongotx.TxRollback;
+import com.ibm.research.mongotx.lrc.LRCTxDBCollection;
 import com.ibm.research.mongotx.lrc.LatestReadCommittedTxDB;
 import com.ibm.research.mongotx.lrc.MongoProfilingCollection;
 import com.mongodb.DuplicateKeyException;
@@ -243,6 +244,8 @@ public class MongoTxDriver extends DB {
         try {
             Tx tx = getOrBeginTransaction(TYPE.SCAN);
             TxCollection collection = txDb.getCollection(table);
+            if (collection instanceof LRCTxDBCollection)
+                ((LRCTxDBCollection) collection).addShardKey(scanField);
 
             Document query = new Document(scanField, buildScanQuery(startkey, recordcount));
 
