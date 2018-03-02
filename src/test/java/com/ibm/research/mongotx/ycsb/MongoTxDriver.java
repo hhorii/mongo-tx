@@ -244,8 +244,6 @@ public class MongoTxDriver extends DB {
         try {
             Tx tx = getOrBeginTransaction(TYPE.SCAN);
             TxCollection collection = txDb.getCollection(table);
-            if (collection instanceof LRCTxDBCollection)
-                ((LRCTxDBCollection) collection).addShardKey(scanField);
 
             Document query = new Document(scanField, buildScanQuery(startkey, recordcount));
 
