@@ -19,19 +19,25 @@ package com.ibm.research.mongotx.dt3;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Properties;
 import java.util.Random;
+import java.util.Set;
 
 import org.bson.Document;
 
 import com.ibm.research.mongotx.TxDatabase;
-import com.ibm.research.mongotx.lrc.LatestReadCommittedTxDB;
+import com.ibm.research.mongotx.si.SDAVTxDB;
+import com.ibm.research.mongotx.si.SDNVTxDB;
+import com.ibm.research.mongotx.si.SDSVTxDB;
+import com.ibm.research.mongotx.util.CustomShardMongoDatabase;
 import com.mongodb.MongoClient;
 import com.mongodb.MongoClientURI;
 import com.mongodb.ReadPreference;
 import com.mongodb.WriteConcern;
-import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
+import com.yahoo.ycsb.db.OptionsSupport;
 
 public class DT3Utils {
 
@@ -286,36 +292,102 @@ public class DT3Utils {
         return getDB(false);
     }
 
-    public static void deleteAll(MongoDatabase db, String colName) throws Exception {
-        MongoCollection<Document> col = db.getCollection(colName);
-        if (col != null)
-            col.deleteMany(new Document());
-    }
-
     public static TxDatabase getDB(boolean drop) {
 
         Properties props = System.getProperties();
 
-        String urlsStr = props.getProperty("mongodb.url", null);
-        if (urlsStr == null)
-            urlsStr = "mongodb://localhost:27017";
-
-        MongoClient mongoClient = new MongoClient(new MongoClientURI(urlsStr));
-        MongoDatabase db = mongoClient.getDatabase(DBNAME).withReadPreference(ReadPreference.primary()).withWriteConcern(WriteConcern.SAFE);
-        if (drop) {
-            try {
-                deleteAll(db, COL_ACCOUNT);
-                deleteAll(db, COL_ACCOUNTPROFILE);
-                deleteAll(db, COL_HOLDING);
-                deleteAll(db, COL_ORDER);
-                deleteAll(db, COL_QUOTE);
-            } catch (Exception ex) {
-                throw new IllegalStateException(ex);
-            }
-            db = mongoClient.getDatabase(DBNAME).withReadPreference(ReadPreference.primary()).withWriteConcern(WriteConcern.SAFE);
+        String urlsStr = props.getProperty("mongodb.urls", null);
+        if (urlsStr == null) {
+//            urlsStr = "mongodb://localhost:27017/ycsb?w=1";
+//            urlsStr = "mongodb://localhost:27017/tx?w=1,mongodb://localhost:27017/ycsb?w=1,mongodb://localhost:27018/ycsb?w=1";
+            urlsStr = "mongodb://localhost:27017/tx?w=1,mongodb://localhost:27017/ycsb?w=1";
         }
 
-        TxDatabase txDb = new LatestReadCommittedTxDB(mongoClient, db);
+        String[] urls = urlsStr.split(",");
+        for (int i = 0; i < urls.length; ++i) {
+            urls[i] = OptionsSupport.updateUrl(urls[i], props);
+
+            if (!urls[i].startsWith("mongodb://")) {
+                System.err.println("ERROR: Invalid URL: '" + urls[i] + "'. Must be of the form " + "'mongodb://<host1>:<port1>,<host2>:<port2>/database?options'. " + "http://docs.mongodb.org/manual/reference/connection-string/");
+                System.exit(1);
+            }
+        }
+
+        MongoClient[] mongoClients = new MongoClient[urls.length];
+
+        String txType = props.getProperty("mongotx.si.type", "sd2v");
+        if (!txType.equals("sd2v") && !txType.startsWith("sdav") && !txType.equals("sdsv") && !txType.equals("sd3v") && !txType.equals("sd4v") && !txType.equals("sd5v")) {
+            System.err.println("ERROR: Invalid mongotx type: " + txType);
+            System.exit(1);
+        }
+
+        List<MongoDatabase> dbs = new ArrayList<>();
+        for (int i = 0; i < urls.length; ++i) {
+            mongoClients[i] = new MongoClient(new MongoClientURI(urls[i]));
+            MongoDatabase db = mongoClients[i].getDatabase(DBNAME).withReadPreference(ReadPreference.primary()).withWriteConcern(WriteConcern.SAFE);
+            if (drop) {
+                db.drop();
+                db = mongoClients[i].getDatabase(DBNAME).withReadPreference(ReadPreference.primary()).withWriteConcern(WriteConcern.SAFE);
+            }
+            dbs.add(db);
+        }
+
+        CustomShardMongoDatabase csDB;
+        if (dbs.size() > 1) {
+            csDB = new CustomShardMongoDatabase(dbs.get(0));
+            for (int i = 1; i < dbs.size(); ++i)
+                csDB.addDatabase(dbs.get(i));
+        } else {
+            csDB = new CustomShardMongoDatabase();
+            for (MongoDatabase db : dbs)
+                csDB.addDatabase(db);
+        }
+
+        Set<String> holdingShardKeys = new HashSet<>();
+        holdingShardKeys.add(H_ACCOUNT_ACCOUNTID);
+        csDB.addSharding(COL_HOLDING, holdingShardKeys);
+
+        //COL_ACCOUNTPROFILE is partitioned by _id
+        //COL_QUOTE is partitioned by _id
+
+        Set<String> userShardKeys = new HashSet<>();
+        userShardKeys.add(A_PROFILE_USERID);
+        csDB.addSharding(COL_ACCOUNT, userShardKeys);
+
+        Set<String> orderShardKeys = new HashSet<>();
+        orderShardKeys.add(O_ACCOUNT_ACCOUNTID);
+        csDB.addSharding(COL_ORDER, orderShardKeys);
+
+        csDB.initialize();
+
+        csDB.getCollection(COL_HOLDING);
+        csDB.getCollection(COL_ACCOUNTPROFILE);
+        csDB.getCollection(COL_QUOTE);
+        csDB.getCollection(COL_ACCOUNT);
+        csDB.getCollection(COL_ORDER);
+
+        TxDatabase txDb;
+        if (txType.equals("sd2v")) {
+            txDb = new SDNVTxDB(csDB, 2);
+        } else if (txType.equals("sd3v")) {
+            txDb = new SDNVTxDB(csDB, 3);
+        } else if (txType.equals("sd4v")) {
+            txDb = new SDNVTxDB(csDB, 4);
+        } else if (txType.equals("sd5v")) {
+            txDb = new SDNVTxDB(csDB, 5);
+        } else if (txType.startsWith("sdav")) {
+            txDb = new SDAVTxDB(csDB);
+        } else if (txType.equals("sdsv")) {
+            txDb = new SDSVTxDB(csDB);
+        } else {
+            throw new IllegalStateException("");
+        }
+
+        if (!txType.endsWith("noidx")) {
+            txDb.getCollection(COL_ACCOUNT).createIndex(new Document(A_PROFILE_USERID, 1));
+            txDb.getCollection(COL_ORDER).createIndex(new Document(O_ACCOUNT_ACCOUNTID, 1));
+            txDb.getCollection(COL_HOLDING).createIndex(new Document(H_ACCOUNT_ACCOUNTID, 1));
+        }
 
         return txDb;
     }
