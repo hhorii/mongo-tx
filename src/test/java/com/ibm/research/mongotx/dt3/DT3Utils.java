@@ -309,6 +309,7 @@ public class DT3Utils {
                 deleteAll(db, COL_HOLDING);
                 deleteAll(db, COL_ORDER);
                 deleteAll(db, COL_QUOTE);
+                deleteAll(db, "DT3_IDX");
             } catch (Exception ex) {
                 throw new IllegalStateException(ex);
             }
